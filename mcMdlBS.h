@@ -231,7 +231,7 @@ public:
 		for (size_t i = 0; i < m; ++i)
 		{
 			//  Numeraire
-			if (defline[i].numeraire)
+			if (defline[i].needNumeraire)
 			{
 				if (mySpotMeasure)
 				{
@@ -292,10 +292,10 @@ private:
         const SampleDef&    def)    //  and its definition
             const
     {
-        if (def.numeraire)
+        if (def.needNumeraire)
         {
-        scen.numeraire = myNumeraires[idx];
-            if (mySpotMeasure) scen.numeraire *= spot;
+        scen.needNumeraire = myNumeraires[idx];
+            if (mySpotMeasure) scen.needNumeraire *= spot;
         }
         
         transform(myForwardFactors[idx].begin(), myForwardFactors[idx].end(), 

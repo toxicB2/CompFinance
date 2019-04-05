@@ -37,15 +37,10 @@ using namespace std;
 using Time = double;
 extern Time systemTime;
 
-//  Scenarios
-//  =========
-
-//  SampleDef = definition 
-//      of what data must be simulated
+//Data to be simulated
 struct SampleDef
 {
-    //  need numeraire?
-    bool            numeraire = true;
+    bool            needNumeraire = true;
 
     vector<Time>    forwardMats;
     vector<Time>    discountMats;
@@ -68,7 +63,7 @@ struct SampleDef
 template <class T>
 struct Sample
 {
-    T           numeraire;
+    T           needNumeraire;
     vector<T>   forwards;
     vector<T>   discounts;
     vector<T>   libors;
@@ -84,7 +79,7 @@ struct Sample
     //  Initialize defaults
     void initialize()
     {
-        numeraire = T(1.0);
+        needNumeraire = T(1.0);
 		fill(forwards.begin(), forwards.end(), T(100.0));
         fill(discounts.begin(), discounts.end(), T(1.0));
         fill(libors.begin(), libors.end(), T(0.0));

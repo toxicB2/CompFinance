@@ -55,7 +55,7 @@ public:
         //  Defline
         myDefline.resize(1);   //  only exercise date
         //  Numeraire needed
-        myDefline[0].numeraire = true;
+        myDefline[0].needNumeraire = true;
         //  Forward to settlement needed at exercise
         myDefline[0].forwardMats.push_back(settlementDate);
         //  Discount to settlement needed at exercise
@@ -117,7 +117,7 @@ public:
     {
         payoffs[0] = max(path[0].forwards[0] - myStrike, 0.0)
             * path[0].discounts[0]
-            / path[0].numeraire; 
+            / path[0].needNumeraire; 
     }
 };
 
@@ -176,13 +176,13 @@ public:
         for (size_t i = 0; i < n; ++i)
         {
             //  Numeraire needed only on last step
-            myDefline[i].numeraire = false;
+            myDefline[i].needNumeraire = false;
 
             //  spot(t) = forward (t, t) needed on every step
             myDefline[i].forwardMats.push_back(myTimeline[i]);
         }
         //  Numeraire needed only on last step
-        myDefline.back().numeraire = true;
+        myDefline.back().needNumeraire = true;
 
         //
 
@@ -262,7 +262,7 @@ public:
 
         //  Payoff
         payoffs[1] = max(path.back().forwards[0] - myStrike, 0.0) 
-                        / path.back().numeraire;
+                        / path.back().needNumeraire;
         payoffs[0] = alive * payoffs[1];
     }
 };
@@ -296,7 +296,7 @@ public:
 		myDefline.resize(n);
 		for (size_t i = 0; i < n; ++i)
 		{
-			myDefline[i].numeraire = true;
+			myDefline[i].needNumeraire = true;
 			myDefline[i].forwardMats.push_back(myMaturities[i]);
 		}
 
@@ -366,7 +366,7 @@ public:
 				myStrikes[i].begin(),
 				myStrikes[i].end(),
 				payoffIt,
-				[spot = path[i].forwards[0], num = path[i].numeraire]
+				[spot = path[i].forwards[0], num = path[i].needNumeraire]
 				(const double& k)
 				{
 					return max(spot - k, 0.0) / num;
@@ -455,7 +455,7 @@ public:
             }
 
             //  Numeraire needed only on every step but first
-            myDefline[i].numeraire = i > 0;
+            myDefline[i].needNumeraire = i > 0;
         }
 
         //  Identify the product
@@ -546,8 +546,8 @@ public:
                 * ( start.libors[0] //  libor(Ti, Ti+1)
                 + myCpn)            //  + coupon
                 * myDt[i]           //  day count / 365
-                / end.numeraire;    //  paid at Ti+1
+                / end.needNumeraire;    //  paid at Ti+1
         }
-        payoffs[0] += 1.0 / path.back().numeraire;  //  redemption at maturity
+        payoffs[0] += 1.0 / path.back().needNumeraire;  //  redemption at maturity
     }
 };
