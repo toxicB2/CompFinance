@@ -45,45 +45,28 @@ public:
         if (!isActive)  //  Only start once
         {
             allThreads.reserve(nThread);
-
-            //	Launch threads on threadFunc and keep handles in a vector
             for (size_t i = 0; i < nThread; i++)
                 allThreads.push_back(thread(&ThreadPool::threadFunc, this, i + 1));
 
             isActive = true;
         }
 	}
-
-	//	Destructor
-    ~ThreadPool()
-    {
-        stop();
-    }
+    ~ThreadPool() { stop(); }
         
     void stop()
 	{
         if (isActive)
         {
-            //	Interrupt mode
             isInterrupted = true;
-
-            //	Interrupt all waiting threads
             workingQueue.interrupt();
-
-            //	Wait for them all to join
             for_each(allThreads.begin(), allThreads.end(), mem_fn(&thread::join));
 
-            //  Clear all threads
             allThreads.clear();
 
-            //  Clear the queue and reset interrupt
             workingQueue.clear();
             workingQueue.resetInterrupt();
-
-            //  Mark as inactive
             isActive = false;
 
-            //  Reset interrupt
             isInterrupted = false;
         }
 	}
