@@ -280,8 +280,8 @@ LPXLOPER12 xParameters(
     //  Make sure we have a model
     if (!mdl) return TempErr12(xlerrNA);
 
-    const auto& paramLabels = mdl->parameterLabels();
-    const auto& params = mdl->parameters();
+    const auto& paramLabels = mdl->getParameterLabels();
+    const auto& params = mdl->getParameters();
     vector<double> paramsCopy(params.size());
     transform(params.begin(), params.end(), paramsCopy.begin(), [](const double* p) { return *p; });
 

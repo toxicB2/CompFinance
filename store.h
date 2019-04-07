@@ -97,7 +97,7 @@ pair<const vector<string>*, const vector<double*>*> getModelParameters(const str
     else
     {
         auto* mdl = it->second.first.get();
-        return make_pair(&mdl->parameterLabels(),&mdl->parameters());
+        return make_pair(&mdl->getParameterLabels(),&mdl->getParameters());
     }
 }
 

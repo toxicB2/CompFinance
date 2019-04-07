@@ -165,7 +165,7 @@ inline auto AADriskOne(
         simulResults.aggregated.begin(),
         simulResults.aggregated.end(),
         0.0) / num.numPath;
-    results.paramIds = model->parameterLabels();
+    results.paramIds = model->getParameterLabels();
     results.risks = move (simulResults.risks);
 
     return results;
@@ -246,7 +246,7 @@ inline auto AADriskAggregate(
         simulResults.aggregated.begin(),
         simulResults.aggregated.end(),
         0.0) / num.numPath;
-    results.paramIds = model->parameterLabels();
+    results.paramIds = model->getParameterLabels();
     results.risks = move(simulResults.risks);
 
     return results;
@@ -290,7 +290,7 @@ inline RiskReports AADriskMulti(
 		? mcParallelSimulAADMulti(*product, *model, *rng, num.numPath)
         : mcSimulAADMulti(*product, *model, *rng, num.numPath);
 
-    results.params = model->parameterLabels();
+    results.params = model->getParameterLabels();
     results.payoffs = product->payoffLabels();
 	results.risks = move(simulResults.risks);
 
@@ -335,17 +335,17 @@ inline RiskReports bumpRisk(
     //  make copy so we don't modify the model in memory
     auto model = orig->clone();
     
-    results.params = model->parameterLabels();
-    const vector<double*> parameters = model->parameters();
-    const size_t n = parameters.size(), m = results.payoffs.size();
+    results.params = model->getParameterLabels();
+    const vector<double*> getParameters = model->getParameters();
+    const size_t n = getParameters.size(), m = results.payoffs.size();
     results.risks.resize(n, m);
 
     //  bumps
     for (size_t i = 0; i < n; ++i)
     {
-        *parameters[i] += 1.e-08;
+        *getParameters[i] += 1.e-08;
         auto bumpRes = value(*model, *product, num);
-        *parameters[i] -= 1.e-08;
+        *getParameters[i] -= 1.e-08;
 
         for (size_t j = 0; j < m; ++j)
         {

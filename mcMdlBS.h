@@ -38,11 +38,11 @@ class BlackScholes : public Model<T>
     const bool          mySpotMeasure;
 
     //  Similuation timeline = today + event dates
-    vector<Time>        myTimeline;
+    vector<Time>        timeline4Security;
     //  Is today on product timeline?
     bool                myTodayOnTimeline;  
     //  The pruduct's defline byref
-    const vector<SampleDef>*    myDefline;
+    const vector<SampleStructure>*    myDefline;
 
     //  Pre-calculated on initialization
 
@@ -128,11 +128,11 @@ public:
     }
 
     //  Access to all the model parameters
-    const vector<T*>& parameters() override
+    const vector<T*>& getParameters() override
     {
         return myParameters;
     }
-    const vector<string>& parameterLabels() const override
+    const vector<string>& getParameterLabels() const override
     {
         return myParameterLabels;
     }
@@ -148,15 +148,15 @@ public:
     //  Initialize timeline
     void allocate(
         const vector<Time>&         productTimeline, 
-        const vector<SampleDef>&    defline) 
+        const vector<SampleStructure>&    defline) 
             override
     {
         //  Simulation timeline = today + product timeline
-        myTimeline.clear();
-        myTimeline.push_back(systemTime);
+        timeline4Security.clear();
+        timeline4Security.push_back(systemTime);
         for (const auto& time : productTimeline)
         {
-            if (time > systemTime) myTimeline.push_back(time);
+            if (time > systemTime) timeline4Security.push_back(time);
         }
 
         //  Is today on the timeline?
@@ -167,8 +167,8 @@ public:
 
         //  Allocate the standard devs and drifts 
         //      over simulation timeline
-        myStds.resize(myTimeline.size() - 1);
-        myDrifts.resize(myTimeline.size() - 1);
+        myStds.resize(timeline4Security.size() - 1);
+        myDrifts.resize(timeline4Security.size() - 1);
 
         //  Allocate the numeraires, discount and forward factors 
         //      over product timeline
@@ -196,16 +196,16 @@ public:
 
     void init(
         const vector<Time>&         productTimeline, 
-        const vector<SampleDef>&    defline) 
+        const vector<SampleStructure>&    defline) 
             override
     {
         //  Pre-compute the standard devs and drifts over simulation timeline        
         const T mu = myRate - myDiv;
-        const size_t n = myTimeline.size() - 1;
+        const size_t n = timeline4Security.size() - 1;
 
         for (size_t i = 0; i < n; ++i)
         {
-            const double dt = myTimeline[i + 1] - myTimeline[i];
+            const double dt = timeline4Security[i + 1] - timeline4Security[i];
 
             //  Var[logST2 / ST1] = vol^2 * dt
             myStds[i] = myVol * sqrt(dt);
@@ -279,7 +279,7 @@ public:
     //  MC Dimension
     size_t simDim() const override
     {
-        return myTimeline.size() - 1;
+        return timeline4Security.size() - 1;
     }
 
 private:
@@ -288,8 +288,8 @@ private:
     inline void fillScen(
         const size_t        idx,    //  index on product timeline
         const T&            spot,   //  spot
-        Sample<T>&          scen,   //  Sample to fill
-        const SampleDef&    def)    //  and its definition
+        ValuesForSampleStruct<T>&          scen,   //  Sample to fill
+        const SampleStructure&    def)    //  and its definition
             const
     {
         if (def.needNumeraire)
@@ -336,7 +336,7 @@ public:
         }
 
         //  Iterate through timeline, apply sampling scheme
-        const size_t n = myTimeline.size() - 1;
+        const size_t n = timeline4Security.size() - 1;
         for (size_t i = 0; i < n; ++i)
         {
             //  Apply known conditional distributions 

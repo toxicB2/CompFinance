@@ -1,26 +1,6 @@
-
-/*
-Written by Antoine Savine in 2018
-
-This code is the strict IP of Antoine Savine
-
-License to use and alter this code for personal and commercial applications
-is freely granted to any person or company who purchased a copy of the book
-
-Modern Computational Finance: AAD and Parallel Simulations
-Antoine Savine
-Wiley, 2018
-
-As long as this comment is preserved at the top of the file
-*/
-
-//  Concrete products, chapter 6
-//  Note: demonstration products, not professional production code
-
 #pragma once
 
 #include <map>
-
 #include "mcBase.h"
 
 #define ONE_HOUR 0.000114469
@@ -29,28 +9,26 @@ As long as this comment is preserved at the top of the file
 template <class T>
 class European : public Product<T>
 {
-    double              myStrike;
-    Time                myExerciseDate;
-    Time                mySettlementDate;
+    double              optionStrike;
+    Time                optionExerciseDate;
+    Time                optionSettlementDate;
 
-    vector<Time>        myTimeline;
-    vector<SampleDef>   myDefline;
+    vector<Time>              timeline4Security;
+    vector<SampleStructure>   myDefline;
 
     vector<string>      myLabels;
 
 public:
-
-    //  Constructor: store data and build timeline
     European(const double   strike, 
-        const Time          exerciseDate,
-        const Time          settlementDate) :
-        myStrike(strike),
-        myExerciseDate(exerciseDate),
-        mySettlementDate(settlementDate),
+             const Time     exerciseDate,
+             const Time     settlementDate) :
+                            optionStrike(strike),
+                            optionExerciseDate(exerciseDate),
+        optionSettlementDate(settlementDate),
         myLabels(1)
     {
         //  Timeline = { exercise date }
-        myTimeline.push_back(exerciseDate);
+        timeline4Security.push_back(exerciseDate);
 
         //  Defline
         myDefline.resize(1);   //  only exercise date
@@ -67,12 +45,12 @@ public:
         ost << fixed;
         if (settlementDate == exerciseDate)
         {
-            ost << "call " << myStrike << " " 
+            ost << "call " << optionStrike << " " 
                 << exerciseDate;
         }
         else
         {
-            ost << "call " << myStrike << " " 
+            ost << "call " << optionStrike << " " 
                 << exerciseDate << " " << settlementDate;
         }
         myLabels[0] = ost.str();
@@ -92,11 +70,11 @@ public:
     //  Timeline
     const vector<Time>& timeline() const override
     {
-        return myTimeline;
+        return timeline4Security;
     }
 
     //  Defline
-    const vector<SampleDef>& defline() const override
+    const vector<SampleStructure>& defline() const override
     {
         return myDefline;
     }
@@ -115,7 +93,7 @@ public:
         vector<T>&                  payoffs)
             const override
     {
-        payoffs[0] = max(path[0].forwards[0] - myStrike, 0.0)
+        payoffs[0] = max(path[0].forwards[0] - optionStrike, 0.0)
             * path[0].discounts[0]
             / path[0].needNumeraire; 
     }
@@ -124,14 +102,14 @@ public:
 template <class T>
 class UOC : public Product<T>
 {
-    double              myStrike;
+    double              optionStrike;
     double              myBarrier;
     Time                myMaturity;
     
     double              mySmooth;
     
-    vector<Time>        myTimeline;
-    vector<SampleDef>   myDefline;
+    vector<Time>        timeline4Security;
+    vector<SampleStructure>   myDefline;
 
     vector<string>      myLabels;
 
@@ -145,7 +123,7 @@ public:
         const Time      maturity, 
         const Time      monitorFreq,
         const double    smooth)
-        : myStrike(strike), 
+        : optionStrike(strike), 
         myBarrier(barrier), 
         myMaturity(maturity),
         mySmooth(smooth),
@@ -154,24 +132,24 @@ public:
         //  Timeline
 
         //  Today
-        myTimeline.push_back(systemTime);
+        timeline4Security.push_back(systemTime);
         Time t = systemTime + monitorFreq;
             
         //  Barrier monitoring
         while (myMaturity - t > ONE_HOUR)
         {
-            myTimeline.push_back(t);
+            timeline4Security.push_back(t);
             t += monitorFreq;
         }
 
         //  Maturity
-        myTimeline.push_back(myMaturity);
+        timeline4Security.push_back(myMaturity);
 
         //
 
         //  Defline
 
-        const size_t n = myTimeline.size();
+        const size_t n = timeline4Security.size();
         myDefline.resize(n);
         for (size_t i = 0; i < n; ++i)
         {
@@ -179,7 +157,7 @@ public:
             myDefline[i].needNumeraire = false;
 
             //  spot(t) = forward (t, t) needed on every step
-            myDefline[i].forwardMats.push_back(myTimeline[i]);
+            myDefline[i].forwardMats.push_back(timeline4Security[i]);
         }
         //  Numeraire needed only on last step
         myDefline.back().needNumeraire = true;
@@ -190,7 +168,7 @@ public:
         ostringstream ost;
         ost.precision(2);
         ost << fixed;
-        ost << "call " << myMaturity << " " << myStrike ;
+        ost << "call " << myMaturity << " " << optionStrike ;
         myLabels[1] = ost.str();
 
         ost << " up and out "
@@ -208,11 +186,11 @@ public:
     //  Timeline
     const vector<Time>& timeline() const override
     {
-        return myTimeline;
+        return timeline4Security;
     }
 
     //  Defline
-    const vector<SampleDef>& defline() const override
+    const vector<SampleStructure>& defline() const override
     {
         return myDefline;
     }
@@ -261,7 +239,7 @@ public:
         }
 
         //  Payoff
-        payoffs[1] = max(path.back().forwards[0] - myStrike, 0.0) 
+        payoffs[1] = max(path.back().forwards[0] - optionStrike, 0.0) 
                         / path.back().needNumeraire;
         payoffs[0] = alive * payoffs[1];
     }
@@ -274,7 +252,7 @@ class Europeans : public Product<T>
 	vector<Time>            myMaturities;
 	//  One vector of strikes per maturity
 	vector<vector<double>>  myStrikes;
-	vector<SampleDef>       myDefline;
+	vector<SampleStructure>       myDefline;
 
 	vector<string>          myLabels;
 
@@ -338,7 +316,7 @@ public:
 	}
 
 	//  Defline
-	const vector<SampleDef>& defline() const override
+	const vector<SampleStructure>& defline() const override
 	{
 		return myDefline;
 	}
@@ -387,8 +365,8 @@ class ContingentBond : public Product<T>
     double              myCpn;
     double              mySmooth;
 
-    vector<Time>        myTimeline;
-    vector<SampleDef>   myDefline;
+    vector<Time>        timeline4Security;
+    vector<SampleStructure>   myDefline;
 
     vector<string>      myLabels;
 
@@ -414,20 +392,20 @@ public:
         //  Timeline
 
         //  Today
-        myTimeline.push_back(systemTime);
+        timeline4Security.push_back(systemTime);
         Time t = systemTime + payFreq;
 
         //  Payment schedule
         while (myMaturity - t > ONE_DAY)
         {
-            myDt.push_back(t - myTimeline.back());
-            myTimeline.push_back(t);
+            myDt.push_back(t - timeline4Security.back());
+            timeline4Security.push_back(t);
             t += payFreq;
         }
 
         //  Maturity
-        myDt.push_back(myMaturity - myTimeline.back());
-        myTimeline.push_back(myMaturity);
+        myDt.push_back(myMaturity - timeline4Security.back());
+        timeline4Security.push_back(myMaturity);
 
         //
 
@@ -439,19 +417,19 @@ public:
         //  and libor (Ti, Ti+1) on on every step but the last
         //  (coverage is assumed act/365)
 
-        const size_t n = myTimeline.size();
+        const size_t n = timeline4Security.size();
         myDefline.resize(n);
         for (size_t i = 0; i < n; ++i)
         {
             //  spot(Ti) = forward (Ti, Ti) needed on every step
-            myDefline[i].forwardMats.push_back(myTimeline[i]);
+            myDefline[i].forwardMats.push_back(timeline4Security[i]);
 
             //  libor(Ti, Ti+1) and discount (Ti, Ti+1) needed 
             //      on every step but last
             if (i < n - 1)
             {
                 myDefline[i].liborDefs.push_back(
-                    SampleDef::RateDef(myTimeline[i], myTimeline[i + 1], "libor"));
+                    SampleStructure::RateDef(timeline4Security[i], timeline4Security[i + 1], "libor"));
             }
 
             //  Numeraire needed only on every step but first
@@ -475,11 +453,11 @@ public:
     //  Timeline
     const vector<Time>& timeline() const override
     {
-        return myTimeline;
+        return timeline4Security;
     }
 
     //  Defline
-    const vector<SampleDef>& defline() const override
+    const vector<SampleStructure>& defline() const override
     {
         return myDefline;
     }

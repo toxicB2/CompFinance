@@ -48,13 +48,13 @@ class Dupire : public Model<T>
     const Time              myMaxDt;
 
     //  Similuation timeline
-    vector<Time>            myTimeline;
+    vector<Time>            timeline4Security;
     //  true (1) if the time step is an event date
     //  false (0) if it is an additional simulation step
     vector<bool>            myCommonSteps;
 
     //  The pruduct's defline byref
-    const vector<SampleDef>*    myDefline;
+    const vector<SampleStructure>*    myDefline;
 
     //  Pre-calculated on initialization
 
@@ -144,11 +144,11 @@ public:
     }
 
     //  Access to all the model parameters
-    const vector<T*>& parameters() override
+    const vector<T*>& getParameters() override
     {
         return myParameters;
     }
-    const vector<string>& parameterLabels() const override
+    const vector<string>& getParameterLabels() const override
     {
         return myParameterLabels;
     }
@@ -164,21 +164,21 @@ public:
     //  Initialize timeline
     void allocate(
         const vector<Time>&         productTimeline, 
-        const vector<SampleDef>&    defline) 
+        const vector<SampleStructure>&    defline) 
             override
     {
         //  Fill from product timeline
         
         //  Do the fill
-        myTimeline = fillData(
+        timeline4Security = fillData(
             productTimeline, // Original (product) timeline
             myMaxDt, // Maximum space allowed
             HALF_DAY, // Minimum distance = half day
             &systemTime, &systemTime + 1);  //  Hack to include system time
         
         //  Mark steps on timeline that are on the product timeline
-        myCommonSteps.resize(myTimeline.size());
-        transform(myTimeline.begin(), myTimeline.end(), myCommonSteps.begin(), 
+        myCommonSteps.resize(timeline4Security.size());
+        transform(timeline4Security.begin(), timeline4Security.end(), myCommonSteps.begin(), 
             [&](const Time t)
         {
             return binary_search(productTimeline.begin(), productTimeline.end(), t);
@@ -189,20 +189,20 @@ public:
 
         //  Allocate the local volatilities
         //      pre-interpolated in time over simulation timeline
-        myInterpVols.resize(myTimeline.size() - 1, mySpots.size());
+        myInterpVols.resize(timeline4Security.size() - 1, mySpots.size());
     }
 
     void init(
         const vector<Time>&         productTimeline, 
-        const vector<SampleDef>&    defline) 
+        const vector<SampleStructure>&    defline) 
             override
     {
         //  Compute the local volatilities
         //      pre-interpolated in time and multiplied by sqrt(dt)
-        const size_t n = myTimeline.size() - 1;
+        const size_t n = timeline4Security.size() - 1;
         for (size_t i = 0; i < n; ++i)
         {
-            const double sqrtdt = sqrt(myTimeline[i + 1] - myTimeline[i]);
+            const double sqrtdt = sqrt(timeline4Security[i + 1] - timeline4Security[i]);
             const size_t m = myLogSpots.size();
             for (size_t j = 0; j < m; ++j)
             {
@@ -211,7 +211,7 @@ public:
                     myTimes.end(),
                     myVols[j],
                     myVols[j] + myTimes.size(),
-                    myTimeline[i]);
+                    timeline4Security[i]);
             }
         }
     }
@@ -219,13 +219,13 @@ public:
     //  MC Dimension
     size_t simDim() const override
     {
-        return myTimeline.size() - 1;
+        return timeline4Security.size() - 1;
     }
 
 private:
 
     //  Helper function, fills a sample given the spot
-    inline static void fillScen(const T& spot, Sample<T>& scen)
+    inline static void fillScen(const T& spot, ValuesForSampleStruct<T>& scen)
     {
         fill(scen.forwards.begin(), scen.forwards.end(), spot);
     }
@@ -254,7 +254,7 @@ public:
         }
 
         //  Iterate through timeline
-        const size_t n = myTimeline.size() - 1;
+        const size_t n = timeline4Security.size() - 1;
         const size_t m = myLogSpots.size();
         for (size_t i = 0; i < n; ++i)
         {

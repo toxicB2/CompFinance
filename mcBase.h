@@ -24,10 +24,9 @@ using Time = double;
 extern Time systemTime;
 
 //Data to be simulated
-struct SampleDef
+struct SampleStructure
 {
     bool            needNumeraire = true;
-
     vector<Time>    forwardMats;
     vector<Time>    discountMats;
 
@@ -44,10 +43,9 @@ struct SampleDef
     vector<RateDef> liborDefs;
 };
 
-//  Sample = simulated value
-//      of data on a given event date
+//--------------------------------------------------------------------------------------------
 template <class T>
-struct Sample
+struct ValuesForSampleStruct
 {
     T           needNumeraire;
     vector<T>   forwards;
@@ -55,14 +53,13 @@ struct Sample
     vector<T>   libors;
 
     //  Allocate given SampleDef
-    void allocate(const SampleDef& data)
+    void allocate(const SampleStructure& data)
     {
         forwards.resize(data.forwardMats.size());
         discounts.resize(data.discountMats.size());
         libors.resize(data.liborDefs.size());
     }
 
-    //  Initialize defaults
     void initialize()
     {
         needNumeraire = T(1.0);
@@ -71,12 +68,12 @@ struct Sample
         fill(libors.begin(), libors.end(), T(0.0));
     }
 };
+//--------------------------------------------------------------------------------------------
+template <class T>
+using Scenario = vector<ValuesForSampleStruct<T>>;
 
 template <class T>
-using Scenario = vector<Sample<T>>;
-
-template <class T>
-inline void allocatePath(const vector<SampleDef>& defline, Scenario<T>& path)
+inline void allocatePath(const vector<SampleStructure>& defline, Scenario<T>& path)
 {
     path.resize(defline.size());
     for (size_t i = 0; i < defline.size(); ++i)
@@ -84,110 +81,60 @@ inline void allocatePath(const vector<SampleDef>& defline, Scenario<T>& path)
         path[i].allocate(defline[i]);
     }
 }
-
+//--------------------------------------------------------------------------------------------
 template <class T>
 inline void initializePath(Scenario<T>& path)
 {
     for (auto& scen : path) scen.initialize();
 }
-
-//  Products
-//  ========
-
+//--------------------------------------------------------------------------------------------
 template <class T>
 class Product
 {
 public:
-
-    //  Access to the product timeline
-    //      along with the sample definitions (defline)
     virtual const vector<Time>& timeline() const = 0;
-    virtual const vector<SampleDef>& defline() const = 0;
-
-    //  Labels of all payoffs in the product
+    virtual const vector<SampleStructure>& defline() const = 0;
     virtual const vector<string>& payoffLabels() const = 0;
 
-    //  Compute payoffs given a path (on the product timeline)
-    virtual void payoffs(
-        //  path, one entry per time step (on the product timeline)
-        const Scenario<T>&          path,     
-        //  pre-allocated space for resulting payoffs
-        vector<T>&                  payoffs)       
-            const = 0;
+    virtual void payoffs(const Scenario<T>&  path,     
+                         vector<T>&       payoffs) const = 0;
 
-    virtual unique_ptr<Product<T>> clone() const = 0;
-
+	virtual unique_ptr<Product<T>> clone() const = 0;
     virtual ~Product() {}
 };
-
-//  Models
-//  ======
-
+//--------------------------------------------------------------------------------------------
 template <class T>
 class Model
 {
 public:
+    virtual void allocate(const vector<Time>&         prdTimeline, 
+                          const vector<SampleStructure>&    prdDefline) = 0;
+    virtual void init( const vector<Time>&         prdTimeline, 
+                       const vector<SampleStructure>&    prdDefline) = 0;
 
-    //  Initialize with product timeline
-    virtual void allocate(
-        const vector<Time>&         prdTimeline, 
-        const vector<SampleDef>&    prdDefline) 
-            = 0;
-    virtual void init(
-        const vector<Time>&         prdTimeline, 
-        const vector<SampleDef>&    prdDefline) 
-            = 0;
-
-    //  Access to the MC dimension
     virtual size_t simDim() const = 0;
 
-    //  Generate a path consuming a vector[simDim()] of independent Gaussians
-    //  return results in a pre-allocated scenario
-    virtual void generatePath(
-        const vector<double>&       gaussVec, 
-        Scenario<T>&                path) 
-            const = 0;
+    virtual void generatePath(const vector<double>& gaussVec, 
+                              Scenario<T>&              path) const = 0;
 
-    virtual unique_ptr<Model<T>> clone() const = 0;
-
+	virtual unique_ptr<Model<T>> clone() const = 0;
     virtual ~Model() {}
 
-    //  Access to all the model parameters and what they mean
-    virtual const vector<T*>& parameters() = 0;
-    virtual const vector<string>& parameterLabels() const = 0;
+    virtual const vector<T*>& getParameters() = 0;
+    virtual const vector<string>& getParameterLabels() const = 0;
+    size_t getNumParams() const { return const_cast<Model*>(this)->getParameters().size();}
 
-    //  Number of parameters
-    size_t numParams() const
-    {
-        return const_cast<Model*>(this)->parameters().size();
-    }
-
-    //  Put parameters on tape, only valid for T = Number
-    void putParametersOnTape()
-    {
-        putParametersOnTapeT<T>();
-    }
+	void putParametersOnTape() { putParametersOnTapeT<T>(); }// only valid for T = Number
 
 private:
-
-    //  If T not Number : do nothing
     template<class U> 
-    void putParametersOnTapeT()
-    {
-
-    }
+    void putParametersOnTapeT(){}
 
     //  If T = Number : put on tape
     template <>
-    void putParametersOnTapeT<Number>()
-    {
-        for (Number* param : parameters()) param->putOnTape();
-    }
+    void putParametersOnTapeT<Number>() { for (Number* param : getParameters()) param->putOnTape();}
 };
-
-//  Random number generators
-//  ========================
-
+//-------------------------------------------------------------------------------------------
 class RNG
 {
 public:
@@ -394,7 +341,7 @@ mcSimulAAD(
 
     //  Dimensions
     const size_t nPay = prd.payoffLabels().size();
-    const vector<Number*>& params = cMdl->parameters();
+    const vector<Number*>& params = cMdl->getParameters();
     const size_t nParam = params.size();
 
     //  AAD - 1
@@ -517,7 +464,7 @@ mcParallelSimulAAD(
     const F&                aggFun = defaultAggregator)
 {
     const size_t nPay = prd.payoffLabels().size();
-    const size_t nParam = mdl.numParams();
+    const size_t nParam = mdl.getNumParams();
 
     //  Allocate results
     AADSimulResults results(nPath, nPay, nParam);
@@ -684,7 +631,7 @@ mcParallelSimulAAD(
         results.risks[j] = 0.0;
         for (size_t i = 0; i < models.size(); ++i)
         {
-            if (mdlInit[i]) results.risks[j] += models[i]->parameters()[j]->adjoint();
+            if (mdlInit[i]) results.risks[j] += models[i]->getParameters()[j]->adjoint();
         }
         results.risks[j] /= nPath;
     }
@@ -731,7 +678,7 @@ mcSimulAADMulti(
     cMdl->allocate(prd.timeline(), prd.defline());
 
 	const size_t nPay = prd.payoffLabels().size();
-	const vector<Number*>& params = cMdl->parameters();
+	const vector<Number*>& params = cMdl->getParameters();
 	const size_t nParam = params.size();
 
 	Tape& tape = *Number::tape;
@@ -805,7 +752,7 @@ mcParallelSimulAADMulti(
 	const size_t            nPath)
 {
 	const size_t nPay = prd.payoffLabels().size();
-	const size_t nParam = mdl.numParams();
+	const size_t nParam = mdl.getNumParams();
 
 	Number::tape->clear();
 	auto resetter = setNumResultsForAAD(true, nPay);
@@ -918,7 +865,7 @@ mcParallelSimulAADMulti(
 		results.risks[j][k] = 0.0;
 		for (size_t i = 0; i < models.size(); ++i)
 		{
-			if (mdlInit[i]) results.risks[j][k] += models[i]->parameters()[j]->adjoint(k);
+			if (mdlInit[i]) results.risks[j][k] += models[i]->getParameters()[j]->adjoint(k);
 		}
 		results.risks[j][k] /= nPath;
 	}
