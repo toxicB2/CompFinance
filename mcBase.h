@@ -292,7 +292,7 @@ inline vector<vector<double>> mcParallelSimul(
     //  Allocate space for Gaussian vectors and paths, 
     //      one for each thread
     ThreadPool *pool = ThreadPool::getInstance();
-    const size_t nThread = pool->numThreads();
+    const size_t nThread = pool->getTotalNumerOfThreads();
     vector<vector<double>> gaussVecs(nThread+1);    //  +1 for main
     vector<Scenario<double>> paths(nThread+1);
     for (auto& vec : gaussVecs) vec.resize(cMdl->simDim());
@@ -328,12 +328,12 @@ inline vector<vector<double>> mcParallelSimul(
         {
             //  Inside the parallel task, 
             //      pick the right pre-allocated vectors
-            const size_t threadNum = pool->threadNum();
-            vector<double>& gaussVec = gaussVecs[threadNum];
-            Scenario<double>& path = paths[threadNum];
+            const size_t getThreadNumer = pool->getThreadNumer();
+            vector<double>& gaussVec = gaussVecs[getThreadNumer];
+            Scenario<double>& path = paths[getThreadNumer];
 
             //  Get a RNG and position it correctly
-            auto& random = rngs[threadNum];
+            auto& random = rngs[getThreadNumer];
             random->skipTo(firstPath);
 
             //  And conduct the simulations, exactly same as sequential
@@ -545,7 +545,7 @@ mcParallelSimulAAD(
     //  1 to n : worker threads
 
     ThreadPool *pool = ThreadPool::getInstance();
-    const size_t nThread = pool->numThreads();
+    const size_t nThread = pool->getTotalNumerOfThreads();
 
     //  Allocate workspace
 
@@ -613,25 +613,25 @@ mcParallelSimulAAD(
 
         futures.push_back(pool->spawnTask([&, firstPath, pathsInTask]()
         {
-            const size_t threadNum = pool->threadNum();
+            const size_t getThreadNumer = pool->getThreadNumer();
 
             //  Use this thread's tape
             //  Thread local magic: each thread its own pointer
             //  Note main thread = 0 is not reset
-            if (threadNum > 0) Number::tape = &tapes[threadNum - 1];
+            if (getThreadNumer > 0) Number::tape = &tapes[getThreadNumer - 1];
 
             //  Initialize once on each thread
-            if (!mdlInit[threadNum])
+            if (!mdlInit[getThreadNumer])
             {
                 //  Initialize
-                initModel4ParallelAAD(prd, *models[threadNum], paths[threadNum]);
+                initModel4ParallelAAD(prd, *models[getThreadNumer], paths[getThreadNumer]);
 
                 //  Mark as initialized
-                mdlInit[threadNum] = true;
+                mdlInit[getThreadNumer] = true;
             }
 
             //  Get a RNG and position it correctly
-            auto& random = rngs[threadNum];
+            auto& random = rngs[getThreadNumer];
             random->skipTo(firstPath);
 
             //  And conduct the simulations, exactly same as sequential
@@ -642,22 +642,22 @@ mcParallelSimulAAD(
 
                 Number::tape->rewindToMark();
                 //  Next Gaussian vector, dimension D
-                random->nextG(gaussVecs[threadNum]);
+                random->nextG(gaussVecs[getThreadNumer]);
                 //  Path
-                models[threadNum]->generatePath(
-                    gaussVecs[threadNum], 
-                    paths[threadNum]);
+                models[getThreadNumer]->generatePath(
+                    gaussVecs[getThreadNumer], 
+                    paths[getThreadNumer]);
                 //  Payoff
-                prd.payoffs(paths[threadNum], payoffs[threadNum]);
+                prd.payoffs(paths[getThreadNumer], payoffs[getThreadNumer]);
 
                 //  Propagate adjoints
-                Number result = aggFun(payoffs[threadNum]);
+                Number result = aggFun(payoffs[getThreadNumer]);
                 result.propagateToMark();
                 //  Store results for the path
                 results.aggregated[firstPath + i] = double(result);
                 convertCollection(
-                    payoffs[threadNum].begin(), 
-                    payoffs[threadNum].end(),
+                    payoffs[getThreadNumer].begin(), 
+                    payoffs[getThreadNumer].end(),
                     results.payoffs[firstPath + i].begin());
             }
 
@@ -825,7 +825,7 @@ mcParallelSimulAADMulti(
 	auto resetter = setNumResultsForAAD(true, nPay);
 
 	ThreadPool *pool = ThreadPool::getInstance();
-	const size_t nThread = pool->numThreads();
+	const size_t nThread = pool->getTotalNumerOfThreads();
 
 	vector<unique_ptr<Model<Number>>> models(nThread + 1);
 	for (auto& model : models)
@@ -873,39 +873,39 @@ mcParallelSimulAADMulti(
 
 		futures.push_back(pool->spawnTask([&, firstPath, pathsInTask]()
 		{
-			const size_t threadNum = pool->threadNum();
+			const size_t getThreadNumer = pool->getThreadNumer();
 
-			if (threadNum > 0) Number::tape = &tapes[threadNum - 1];
+			if (getThreadNumer > 0) Number::tape = &tapes[getThreadNumer - 1];
 
-			if (!mdlInit[threadNum])
+			if (!mdlInit[getThreadNumer])
 			{
-				initModel4ParallelAAD(prd, *models[threadNum], paths[threadNum]);
-				mdlInit[threadNum] = true;
+				initModel4ParallelAAD(prd, *models[getThreadNumer], paths[getThreadNumer]);
+				mdlInit[getThreadNumer] = true;
 			}
 
-			auto& random = rngs[threadNum];
+			auto& random = rngs[getThreadNumer];
 			random->skipTo(firstPath);
 
 			for (size_t i = 0; i < pathsInTask; i++)
 			{
 
 				Number::tape->rewindToMark();
-				random->nextG(gaussVecs[threadNum]);
-				models[threadNum]->generatePath(
-					gaussVecs[threadNum],
-					paths[threadNum]);
-				prd.payoffs(paths[threadNum], payoffs[threadNum]);
+				random->nextG(gaussVecs[getThreadNumer]);
+				models[getThreadNumer]->generatePath(
+					gaussVecs[getThreadNumer],
+					paths[getThreadNumer]);
+				prd.payoffs(paths[getThreadNumer], payoffs[getThreadNumer]);
 
-				const size_t n = payoffs[threadNum].size();
+				const size_t n = payoffs[getThreadNumer].size();
 				for (size_t j = 0; j < n; ++j)
 				{
-					payoffs[threadNum][j].adjoint(j) = 1.0;
+					payoffs[getThreadNumer][j].adjoint(j) = 1.0;
 				}
 				Number::propagateAdjointsMulti(prev(Number::tape->end()), Number::tape->markIt());
 
 				convertCollection(
-					payoffs[threadNum].begin(),
-					payoffs[threadNum].end(),
+					payoffs[getThreadNumer].begin(),
+					payoffs[getThreadNumer].end(),
 					results.payoffs[firstPath + i].begin());
 			}
 

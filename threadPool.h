@@ -1,22 +1,4 @@
-
-/*
-Written by Antoine Savine in 2018
-
-This code is the strict IP of Antoine Savine
-
-License to use and alter this code for personal and commercial applications
-is freely granted to any person or company who purchased a copy of the book
-
-Modern Computational Finance: AAD and Parallel Simulations
-Antoine Savine
-Wiley, 2018
-
-As long as this comment is preserved at the top of the file
-*/
-
 #pragma once
-
-//  Thread pool of chapter 3
 
 #include <future>
 #include <thread>
@@ -27,68 +9,48 @@ using namespace std;
 typedef packaged_task<bool(void)> Task;
 typedef future<bool> TaskHandle;
 
-class ThreadPool 
+class ThreadPool //singleton
 {
-	//	The one and only instance
-	static ThreadPool myInstance;
+	static ThreadPool theOnlyInstance;
+    ConcurrentQueue<Task> workingQueue;
+	vector<thread> allThreads;
 
-	//	The task queue
-    ConcurrentQueue<Task> myQueue;
+    bool isActive;
+	bool isInterrupted;
 
-	//	The threads
-	vector<thread> myThreads;
+	static thread_local size_t protectedNumberOfGivenThread;
 
-    //  Active indicator
-    bool myActive;
-
-	//	Interruption indicator
-	bool myInterrupt;
-
-	//	Thread number
-	static thread_local size_t myTLSNum;
-
-	//	The function that is executed on every thread
 	void threadFunc(const size_t num)
 	{
-		myTLSNum = num;
-
+		protectedNumberOfGivenThread = num;
 		Task t;
 
-		//	"Infinite" loop, only broken on destruction
-		while (!myInterrupt) 
+		while (!isInterrupted) 
 		{
-			//	Pop and executes tasks
-			myQueue.pop(t);
-			if (!myInterrupt) t();			
+			workingQueue.pop(t);
+			if (!isInterrupted) t();			
 		}
 	}
 
-    //  The constructor stays private, ensuring single instance
-    ThreadPool() : myActive(false), myInterrupt(false) {}
+    ThreadPool() : isActive(false), isInterrupted(false) {}
 
 public:
+	//Getters
+	static ThreadPool* getInstance() { return &theOnlyInstance; }
+	size_t getTotalNumerOfThreads() const { return allThreads.size(); }
+	static size_t getThreadNumer() { return protectedNumberOfGivenThread; }
 
-	//	Access the instance
-	static ThreadPool* getInstance() { return &myInstance; }
-
-	//	Number of threads
-	size_t numThreads() const { return myThreads.size(); }
-
-	//	The number of the caller thread
-	static size_t threadNum() { return myTLSNum; }
-
-	//	Starter
 	void start(const size_t nThread = thread::hardware_concurrency() - 1)
 	{
-        if (!myActive)  //  Only start once
+        if (!isActive)  //  Only start once
         {
-            myThreads.reserve(nThread);
+            allThreads.reserve(nThread);
 
             //	Launch threads on threadFunc and keep handles in a vector
             for (size_t i = 0; i < nThread; i++)
-                myThreads.push_back(thread(&ThreadPool::threadFunc, this, i + 1));
+                allThreads.push_back(thread(&ThreadPool::threadFunc, this, i + 1));
 
-            myActive = true;
+            isActive = true;
         }
 	}
 
@@ -100,29 +62,29 @@ public:
         
     void stop()
 	{
-        if (myActive)
+        if (isActive)
         {
             //	Interrupt mode
-            myInterrupt = true;
+            isInterrupted = true;
 
             //	Interrupt all waiting threads
-            myQueue.interrupt();
+            workingQueue.interrupt();
 
             //	Wait for them all to join
-            for_each(myThreads.begin(), myThreads.end(), mem_fn(&thread::join));
+            for_each(allThreads.begin(), allThreads.end(), mem_fn(&thread::join));
 
             //  Clear all threads
-            myThreads.clear();
+            allThreads.clear();
 
             //  Clear the queue and reset interrupt
-            myQueue.clear();
-            myQueue.resetInterrupt();
+            workingQueue.clear();
+            workingQueue.resetInterrupt();
 
             //  Mark as inactive
-            myActive = false;
+            isActive = false;
 
             //  Reset interrupt
-            myInterrupt = false;
+            isInterrupted = false;
         }
 	}
 
@@ -138,7 +100,7 @@ public:
 	{
 		Task t(move(c));
 		TaskHandle f = t.get_future();
-		myQueue.push(move(t));
+		workingQueue.push(move(t));
 		return f;
 	}
 
@@ -156,7 +118,7 @@ public:
 		while (f.wait_for(0s) != future_status::ready)
 		{
 			//	Non blocking
-			if (myQueue.tryPop(t)) 
+			if (workingQueue.tryPop(t)) 
 			{
 				t();
 				b = true;

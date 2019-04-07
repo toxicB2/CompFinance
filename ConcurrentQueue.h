@@ -1,8 +1,5 @@
 #pragma once
 
-//  Concurrent queue of chapter 3, 
-//  Used in the thread pool
-
 #include <queue>
 #include <mutex>
 using namespace std;
@@ -10,92 +7,72 @@ using namespace std;
 template <class T>
 class ConcurrentQueue
 {
-
-    queue<T> myQueue;
-	mutable mutex myMutex;
-	condition_variable myCV;
-	bool myInterrupt;
+    queue<T> workingQueue;
+	mutable mutex mutexObj;
+	condition_variable condVar;
+	bool isInterrupted;
 
 public:
-
-	ConcurrentQueue() : myInterrupt(false) {}
+	ConcurrentQueue() : isInterrupted(false) {}
 	~ConcurrentQueue() { interrupt(); }
 
 	bool empty() const
 	{
-		//	Lock
-		lock_guard<mutex> lk(myMutex);
-		//	Access underlying queue
-		return myQueue.empty();
-	}	//	Unlock
+		lock_guard<mutex> lk(mutexObj);
+		return workingQueue.empty();
+	}
 
-    //	Pop into argument
 	bool tryPop(T& t)
 	{
-		//	Lock
-		lock_guard<mutex> lk(myMutex);
-		if (myQueue.empty()) return false;
-		//	Move from queue
-		t = move(myQueue.front());
-		//	Combine front/pop
-		myQueue.pop();
+		lock_guard<mutex> lk(mutexObj);
+		if (workingQueue.empty()) return false;
+		t = move(workingQueue.front());
+		workingQueue.pop();
 
 		return true;
-	}	//	Unlock
+	}
 
-    //	Pass t byVal or move with push( move( t))
-	void push(T t)
+	void push(T t) //	Pass t byVal or move with push( move( t))
 	{
 		{
-			//	Lock
-			lock_guard<mutex> lk(myMutex);
-			//	Move into queue
-			myQueue.push(move(t));
-		}	//	Unlock before notification
-
+			lock_guard<mutex> lk(mutexObj);
+			workingQueue.push(move(t));
+		}	
         //	Unlock before notification 
-		myCV.notify_one();
+		condVar.notify_one();
 	}
 
 	//	Wait if empty
 	bool pop(T& t)
 	{
-		//	(Unique) lock
-		unique_lock<mutex> lk(myMutex);
-
+		unique_lock<mutex> lk(mutexObj);
 		//	Wait if empty, release lock until notified 
-		while (!myInterrupt && myQueue.empty()) myCV.wait(lk);
+		while (!isInterrupted && workingQueue.empty()) condVar.wait(lk);
 
-		//	Re-acquire lock, resume 
+		if (isInterrupted) 
+			return false;
 
-		//  Check for interruption
-		if (myInterrupt) return false;
-
-		//	Combine front/pop 
-		t = move(myQueue.front());
-		myQueue.pop();
+		t = move(workingQueue.front());
+		workingQueue.pop();
 
 		return true;
 
-	}	//	Unlock
+	}	
 
 	void interrupt()
 	{
         {
-            lock_guard<mutex> lk(myMutex);
-            myInterrupt = true;
+            lock_guard<mutex> lk(mutexObj);
+            isInterrupted = true;
         }
-		myCV.notify_all();
+		condVar.notify_all();
 	}
 
-    void resetInterrupt()
-    {
-        myInterrupt = false;
-    }
+    void resetInterrupt(){ isInterrupted = false;}
 
     void clear()
     {
         queue<T> empty;
-        swap(myQueue, empty);
+        swap(workingQueue, empty);
     }
 };
