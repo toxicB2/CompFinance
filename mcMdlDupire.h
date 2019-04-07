@@ -54,7 +54,7 @@ class Dupire : public Model<T>
     vector<bool>            myCommonSteps;
 
     //  The pruduct's defline byref
-    const vector<SampleStructure>*    myDefline;
+    const vector<SampleStructure>*    defline4Security;
 
     //  Pre-calculated on initialization
 
@@ -154,17 +154,17 @@ public:
     }
 
     //  Virtual copy constructor
-    unique_ptr<Model<T>> clone() const override
+    unique_ptr<Model<T>> getClonePtr() const override
     {
-        auto clone = make_unique<Dupire<T>>(*this);
-        clone->setParamPointers();
-        return clone;
+        auto getClonePtr = make_unique<Dupire<T>>(*this);
+        getClonePtr->setParamPointers();
+        return getClonePtr;
     }
 
     //  Initialize timeline
     void allocate(
         const vector<Time>&         productTimeline, 
-        const vector<SampleStructure>&    defline) 
+        const vector<SampleStructure>&    getDeflineRef) 
             override
     {
         //  Fill from product timeline
@@ -185,7 +185,7 @@ public:
         });
 
         //  Take a reference on the product's defline
-        myDefline = &defline;
+        defline4Security = &getDeflineRef;
 
         //  Allocate the local volatilities
         //      pre-interpolated in time over simulation timeline
@@ -194,7 +194,7 @@ public:
 
     void init(
         const vector<Time>&         productTimeline, 
-        const vector<SampleStructure>&    defline) 
+        const vector<SampleStructure>&    getDeflineRef) 
             override
     {
         //  Compute the local volatilities

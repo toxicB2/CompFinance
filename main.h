@@ -62,8 +62,8 @@ inline auto value(
         vector<double> values;
     } results;
 
-    const size_t nPayoffs = product.payoffLabels().size();
-    results.identifiers = product.payoffLabels();
+    const size_t nPayoffs = product.getPayoffLabelsRef().size();
+    results.identifiers = product.getPayoffLabelsRef();
     results.values.resize(nPayoffs);
     for (size_t i = 0; i < nPayoffs; ++i)
     {
@@ -119,7 +119,7 @@ inline auto AADriskOne(
     size_t riskPayoffIdx = 0;
     if (!riskPayoff.empty())
     {
-        const vector<string>& allPayoffs = product->payoffLabels();
+        const vector<string>& allPayoffs = product->getPayoffLabelsRef();
         auto it = find(allPayoffs.begin(), allPayoffs.end(), riskPayoff);
         if (it == allPayoffs.end())
         {
@@ -149,14 +149,14 @@ inline auto AADriskOne(
         vector<double>  risks;
     } results;
 
-    const size_t nPayoffs = product->payoffLabels().size();
-    results.payoffIds = product->payoffLabels();
+    const size_t nPayoffs = product->getPayoffLabelsRef().size();
+    results.payoffIds = product->getPayoffLabelsRef();
     results.payoffValues.resize(nPayoffs);
     for (size_t i = 0; i < nPayoffs; ++i)
     {
         results.payoffValues[i] = accumulate(
-            simulResults.payoffs.begin(), 
-            simulResults.payoffs.end(), 
+            simulResults.computePayoffs.begin(), 
+            simulResults.computePayoffs.end(), 
             0.0,
             [i](const double acc, const vector<double>& v) { return acc + v[i]; }
         ) / num.numPath;
@@ -193,7 +193,7 @@ inline auto AADriskAggregate(
     else rng = make_unique<mrg32k3a>(num.seed1, num.seed2);
 
     //  Vector of notionals
-    const vector<string>& allPayoffs = product->payoffLabels();
+    const vector<string>& allPayoffs = product->getPayoffLabelsRef();
     vector<double> vnots(allPayoffs.size(), 0.0);
     for (const auto& notional : notionals)
     {
@@ -206,9 +206,9 @@ inline auto AADriskAggregate(
     }
 
     //  Aggregator
-    auto aggregator = [&vnots](const vector<Number>& payoffs)
+    auto aggregator = [&vnots](const vector<Number>& computePayoffs)
     {
-        return inner_product(payoffs.begin(), payoffs.end(), vnots.begin(), Number(0.0));
+        return inner_product(computePayoffs.begin(), computePayoffs.end(), vnots.begin(), Number(0.0));
     };
 
     //  Simulate
@@ -230,14 +230,14 @@ inline auto AADriskAggregate(
         vector<double>  risks;
     } results;
 
-    const size_t nPayoffs = product->payoffLabels().size();
-    results.payoffIds = product->payoffLabels();
+    const size_t nPayoffs = product->getPayoffLabelsRef().size();
+    results.payoffIds = product->getPayoffLabelsRef();
     results.payoffValues.resize(nPayoffs);
     for (size_t i = 0; i < nPayoffs; ++i)
     {
         results.payoffValues[i] = accumulate(
-            simulResults.payoffs.begin(),
-            simulResults.payoffs.end(),
+            simulResults.computePayoffs.begin(),
+            simulResults.computePayoffs.end(),
             0.0,
             [i](const double acc, const vector<double>& v) { return acc + v[i]; }
         ) / num.numPath;
@@ -258,7 +258,7 @@ inline auto AADriskAggregate(
 
 struct RiskReports
 {
-    vector<string> payoffs;
+    vector<string> computePayoffs;
     vector<string> params;
     vector<double> values;
     matrix<double> risks;
@@ -291,17 +291,17 @@ inline RiskReports AADriskMulti(
         : mcSimulAADMulti(*product, *model, *rng, num.numPath);
 
     results.params = model->getParameterLabels();
-    results.payoffs = product->payoffLabels();
+    results.computePayoffs = product->getPayoffLabelsRef();
 	results.risks = move(simulResults.risks);
 
 	//	Average values across paths
-	const size_t nPayoffs = product->payoffLabels().size();
+	const size_t nPayoffs = product->getPayoffLabelsRef().size();
 	results.values.resize(nPayoffs);
 	for (size_t i = 0; i < nPayoffs; ++i)
 	{
 		results.values[i] = accumulate(
-			simulResults.payoffs.begin(),
-			simulResults.payoffs.end(),
+			simulResults.computePayoffs.begin(),
+			simulResults.computePayoffs.end(),
 			0.0,
 			[i](const double acc, const vector<double>& v) { return acc + v[i]; }
 		) / num.numPath;
@@ -329,15 +329,15 @@ inline RiskReports bumpRisk(
 
     //  base values
     auto baseRes = value(*orig, *product, num);
-    results.payoffs = baseRes.identifiers;
+    results.computePayoffs = baseRes.identifiers;
 	results.values = baseRes.values;
 
     //  make copy so we don't modify the model in memory
-    auto model = orig->clone();
+    auto model = orig->getClonePtr();
     
     results.params = model->getParameterLabels();
     const vector<double*> getParameters = model->getParameters();
-    const size_t n = getParameters.size(), m = results.payoffs.size();
+    const size_t n = getParameters.size(), m = results.computePayoffs.size();
     results.risks.resize(n, m);
 
     //  bumps

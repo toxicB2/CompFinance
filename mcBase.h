@@ -73,12 +73,12 @@ template <class T>
 using Scenario = vector<ValuesForSampleStruct<T>>;
 
 template <class T>
-inline void allocatePath(const vector<SampleStructure>& defline, Scenario<T>& path)
+inline void allocatePath(const vector<SampleStructure>& getDeflineRef, Scenario<T>& path)
 {
-    path.resize(defline.size());
-    for (size_t i = 0; i < defline.size(); ++i)
+    path.resize(getDeflineRef.size());
+    for (size_t i = 0; i < getDeflineRef.size(); ++i)
     {
-        path[i].allocate(defline[i]);
+        path[i].allocate(getDeflineRef[i]);
     }
 }
 //--------------------------------------------------------------------------------------------
@@ -92,14 +92,14 @@ template <class T>
 class Product
 {
 public:
-    virtual const vector<Time>& timeline() const = 0;
-    virtual const vector<SampleStructure>& defline() const = 0;
-    virtual const vector<string>& payoffLabels() const = 0;
+    virtual const vector<Time>& getTimelineRef() const = 0;
+    virtual const vector<SampleStructure>& getDeflineRef() const = 0;
+    virtual const vector<string>& getPayoffLabelsRef() const = 0;
 
-    virtual void payoffs(const Scenario<T>&  path,     
-                         vector<T>&       payoffs) const = 0;
+    virtual void computePayoffs(const Scenario<T>&  path,     
+                         vector<T>&       computePayoffs) const = 0;
 
-	virtual unique_ptr<Product<T>> clone() const = 0;
+	virtual unique_ptr<Product<T>> getClonePtr() const = 0;
     virtual ~Product() {}
 };
 //--------------------------------------------------------------------------------------------
@@ -117,7 +117,7 @@ public:
     virtual void generatePath(const vector<double>& gaussVec, 
                               Scenario<T>&              path) const = 0;
 
-	virtual unique_ptr<Model<T>> clone() const = 0;
+	virtual unique_ptr<Model<T>> getClonePtr() const = 0;
     virtual ~Model() {}
 
     virtual const vector<T*>& getParameters() = 0;
@@ -147,7 +147,7 @@ public:
 	virtual void nextU(vector<double>& uVec) = 0;
 	virtual void nextG(vector<double>& gaussVec) = 0;
 
-    virtual unique_ptr<RNG> clone() const = 0;
+    virtual unique_ptr<RNG> getClonePtr() const = 0;
 
     virtual ~RNG() {}
 
@@ -172,22 +172,22 @@ inline vector<vector<double>> mcSimul(
     //  Work with copies of the model and RNG
     //      which are modified when we set up the simulation
     //  Copies are OK at high level
-    auto cMdl = mdl.clone();
-    auto cRng = rng.clone();
+    auto cMdl = mdl.getClonePtr();
+    auto cRng = rng.getClonePtr();
 
     //	Allocate results
-    const size_t nPay = prd.payoffLabels().size();
+    const size_t nPay = prd.getPayoffLabelsRef().size();
     vector<vector<double>> results(nPath, vector<double>(nPay));
     //  Init the simulation timeline
-    cMdl->allocate(prd.timeline(), prd.defline());
-    cMdl->init(prd.timeline(), prd.defline());              
+    cMdl->allocate(prd.getTimelineRef(), prd.getDeflineRef());
+    cMdl->init(prd.getTimelineRef(), prd.getDeflineRef());              
     //  Init the RNG
     cRng->init(cMdl->simDim());                        
     //  Allocate Gaussian vector
     vector<double> gaussVec(cMdl->simDim());           
     //  Allocate path
     Scenario<double> path;
-    allocatePath(prd.defline(), path);
+    allocatePath(prd.getDeflineRef(), path);
     initializePath(path);
 
     //	Iterate through paths	
@@ -198,7 +198,7 @@ inline vector<vector<double>> mcSimul(
         //  Generate path, consume Gaussian vector
         cMdl->generatePath(gaussVec, path);     
         //	Compute result
-        prd.payoffs(path, results[i]);
+        prd.computePayoffs(path, results[i]);
     }
 
     return results;	//	C++11: move
@@ -214,13 +214,13 @@ inline vector<vector<double>> mcParallelSimul(
     const RNG&                  rng,
     const size_t                nPath)
 {
-    auto cMdl = mdl.clone();
+    auto cMdl = mdl.getClonePtr();
 
-    const size_t nPay = prd.payoffLabels().size();
+    const size_t nPay = prd.getPayoffLabelsRef().size();
     vector<vector<double>> results(nPath, vector<double>(nPay));
 
-    cMdl->allocate(prd.timeline(), prd.defline());
-    cMdl->init(prd.timeline(), prd.defline());
+    cMdl->allocate(prd.getTimelineRef(), prd.getDeflineRef());
+    cMdl->init(prd.getTimelineRef(), prd.getDeflineRef());
 
     //  Allocate space for Gaussian vectors and paths, 
     //      one for each thread
@@ -231,7 +231,7 @@ inline vector<vector<double>> mcParallelSimul(
     for (auto& vec : gaussVecs) vec.resize(cMdl->simDim());
     for (auto& path : paths)
     {
-        allocatePath(prd.defline(), path);
+        allocatePath(prd.getDeflineRef(), path);
         initializePath(path);
     }
     
@@ -239,7 +239,7 @@ inline vector<vector<double>> mcParallelSimul(
     vector<unique_ptr<RNG>> rngs(nThread + 1);
     for (auto& random : rngs)
     {
-        random = rng.clone();
+        random = rng.getClonePtr();
         random->init(cMdl->simDim());
     }
 
@@ -277,7 +277,7 @@ inline vector<vector<double>> mcParallelSimul(
                 //  Path
                 cMdl->generatePath(gaussVec, path);       
                 //  Payoff
-                prd.payoffs(path, results[firstPath + i]);
+                prd.computePayoffs(path, results[firstPath + i]);
             }
 
             //  Remember tasks must return bool
@@ -300,13 +300,13 @@ inline vector<vector<double>> mcParallelSimul(
 struct AADSimulResults
 {
     AADSimulResults(const size_t nPath, const size_t nPay, const size_t nParam) :
-        payoffs(nPath, vector<double>(nPay)),
+        computePayoffs(nPath, vector<double>(nPay)),
         aggregated(nPath),
         risks(nParam)
     {}
 
     //  matrix(0..nPath - 1, 0..nPay - 1) of payoffs, same as mcSimul()
-    vector<vector<double>>  payoffs;
+    vector<vector<double>>  computePayoffs;
 
     //  vector(0..nPath) of aggregated payoffs
     vector<double>          aggregated;
@@ -331,16 +331,16 @@ mcSimulAAD(
     //  Work with copies of the model and RNG
     //      which are modified when we set up the simulation
     //  Copies are OK at high level
-    auto cMdl = mdl.clone();
-    auto cRng = rng.clone();
+    auto cMdl = mdl.getClonePtr();
+    auto cRng = rng.getClonePtr();
 
     //  Allocate path and model
 	Scenario<Number> path;
-    allocatePath(prd.defline(), path);
-	cMdl->allocate(prd.timeline(), prd.defline());
+    allocatePath(prd.getDeflineRef(), path);
+	cMdl->allocate(prd.getTimelineRef(), prd.getDeflineRef());
 
     //  Dimensions
-    const size_t nPay = prd.payoffLabels().size();
+    const size_t nPay = prd.getPayoffLabelsRef().size();
     const vector<Number*>& params = cMdl->getParameters();
     const size_t nParam = params.size();
 
@@ -356,7 +356,7 @@ mcSimulAAD(
     //  Init the simulation timeline
     //  CAREFUL: simulation timeline must be on tape
     //  Hence moved here
-    cMdl->init(prd.timeline(), prd.defline());
+    cMdl->init(prd.getTimelineRef(), prd.getDeflineRef());
     //  Initialize path
     initializePath(path);
     //  Mark the tape straight after initialization
@@ -388,7 +388,7 @@ mcSimulAAD(
         //  Generate path, consume Gaussian vector
         cMdl->generatePath(gaussVec, path);     
         //	Compute result
-        prd.payoffs(path, nPayoffs);
+        prd.computePayoffs(path, nPayoffs);
         //  Aggregate
         Number result = aggFun(nPayoffs);
 
@@ -400,7 +400,7 @@ mcSimulAAD(
         convertCollection(
             nPayoffs.begin(), 
             nPayoffs.end(), 
-            results.payoffs[i].begin());
+            results.computePayoffs[i].begin());
 		//
     }
 
@@ -445,7 +445,7 @@ inline void initModel4ParallelAAD(
     //  Init the simulation timeline
     //  CAREFUL: simulation timeline must be on tape
     //  Hence moved here
-    clonedMdl.init(prd.timeline(), prd.defline());
+    clonedMdl.init(prd.getTimelineRef(), prd.getDeflineRef());
     //  Path
     initializePath(path);
     //  Mark the tape straight after parameters
@@ -463,7 +463,7 @@ mcParallelSimulAAD(
     const size_t            nPath,
     const F&                aggFun = defaultAggregator)
 {
-    const size_t nPay = prd.payoffLabels().size();
+    const size_t nPay = prd.getPayoffLabelsRef().size();
     const size_t nParam = mdl.getNumParams();
 
     //  Allocate results
@@ -486,19 +486,19 @@ mcParallelSimulAAD(
     vector<unique_ptr<Model<Number>>> models(nThread + 1);
     for (auto& model : models)
     {
-        model = mdl.clone();
-        model->allocate(prd.timeline(), prd.defline());
+        model = mdl.getClonePtr();
+        model->allocate(prd.getTimelineRef(), prd.getDeflineRef());
     }
 
     //  One scenario per thread
     vector<Scenario<Number>> paths(nThread + 1);
     for (auto& path : paths)
     {
-        allocatePath(prd.defline(), path);
+        allocatePath(prd.getDeflineRef(), path);
     }
 
     //  One vector of payoffs per thread
-    vector<vector<Number>> payoffs(nThread + 1, vector<Number>(nPay));
+    vector<vector<Number>> computePayoffs(nThread + 1, vector<Number>(nPay));
 
     //  ~workspace
 
@@ -522,7 +522,7 @@ mcParallelSimulAAD(
     vector<unique_ptr<RNG>> rngs(nThread + 1);
     for (auto& random : rngs)
     {
-        random = rng.clone();
+        random = rng.getClonePtr();
         random->init(models[0]->simDim());
     }
 
@@ -581,17 +581,17 @@ mcParallelSimulAAD(
                     gaussVecs[getThreadNumer], 
                     paths[getThreadNumer]);
                 //  Payoff
-                prd.payoffs(paths[getThreadNumer], payoffs[getThreadNumer]);
+                prd.computePayoffs(paths[getThreadNumer], computePayoffs[getThreadNumer]);
 
                 //  Propagate adjoints
-                Number result = aggFun(payoffs[getThreadNumer]);
+                Number result = aggFun(computePayoffs[getThreadNumer]);
                 result.propagateToMark();
                 //  Store results for the path
                 results.aggregated[firstPath + i] = double(result);
                 convertCollection(
-                    payoffs[getThreadNumer].begin(), 
-                    payoffs[getThreadNumer].end(),
-                    results.payoffs[firstPath + i].begin());
+                    computePayoffs[getThreadNumer].begin(), 
+                    computePayoffs[getThreadNumer].end(),
+                    results.computePayoffs[firstPath + i].begin());
             }
 
             //  Remember tasks must return bool
@@ -649,12 +649,12 @@ mcParallelSimulAAD(
 struct AADMultiSimulResults
 {
 	AADMultiSimulResults(const size_t nPath, const size_t nPay, const size_t nParam) :
-		payoffs(nPath, vector<double>(nPay)),
+		computePayoffs(nPath, vector<double>(nPay)),
 		risks(nParam, nPay)
 	{}
 
 	//  matrix(0..nPath - 1, 0..nPay - 1) of payoffs, same as mcSimul()
-	vector<vector<double>>  payoffs;
+	vector<vector<double>>  computePayoffs;
 
 	//  matrix(0..nParam - 1, 0..nPay - 1) of risk sensitivities
 	//		of all payoffs, averaged over paths
@@ -670,14 +670,14 @@ mcSimulAADMulti(
 	const RNG&              rng,
 	const size_t            nPath)
 {
-	auto cMdl = mdl.clone();
-	auto cRng = rng.clone();
+	auto cMdl = mdl.getClonePtr();
+	auto cRng = rng.getClonePtr();
 
 	Scenario<Number> path;
-	allocatePath(prd.defline(), path);
-    cMdl->allocate(prd.timeline(), prd.defline());
+	allocatePath(prd.getDeflineRef(), path);
+    cMdl->allocate(prd.getTimelineRef(), prd.getDeflineRef());
 
-	const size_t nPay = prd.payoffLabels().size();
+	const size_t nPay = prd.getPayoffLabelsRef().size();
 	const vector<Number*>& params = cMdl->getParameters();
 	const size_t nParam = params.size();
 
@@ -689,7 +689,7 @@ mcSimulAADMulti(
 	auto resetter = setNumResultsForAAD(true, nPay);
 
     cMdl->putParametersOnTape();
-	cMdl->init(prd.timeline(), prd.defline());
+	cMdl->init(prd.getTimelineRef(), prd.getDeflineRef());
 	initializePath(path);
 	tape.mark();
 
@@ -708,7 +708,7 @@ mcSimulAADMulti(
 
 		cRng->nextG(gaussVec);
 		cMdl->generatePath(gaussVec, path);
-		prd.payoffs(path, nPayoffs);
+		prd.computePayoffs(path, nPayoffs);
 
         //  Multi-dimensional propagation
         //      client code seeds the tape with the correct boundary conditions 
@@ -722,7 +722,7 @@ mcSimulAADMulti(
 		convertCollection(
             nPayoffs.begin(), 
             nPayoffs.end(), 
-            results.payoffs[i].begin());
+            results.computePayoffs[i].begin());
 	}
 
     //  Multi-dimensional propagation over initialization, mark to start
@@ -751,7 +751,7 @@ mcParallelSimulAADMulti(
 	const RNG& rng,
 	const size_t            nPath)
 {
-	const size_t nPay = prd.payoffLabels().size();
+	const size_t nPay = prd.getPayoffLabelsRef().size();
 	const size_t nParam = mdl.getNumParams();
 
 	Number::tape->clear();
@@ -763,17 +763,17 @@ mcParallelSimulAADMulti(
 	vector<unique_ptr<Model<Number>>> models(nThread + 1);
 	for (auto& model : models)
 	{
-		model = mdl.clone();
-		model->allocate(prd.timeline(), prd.defline());
+		model = mdl.getClonePtr();
+		model->allocate(prd.getTimelineRef(), prd.getDeflineRef());
 	}
 
 	vector<Scenario<Number>> paths(nThread + 1);
 	for (auto& path : paths)
 	{
-		allocatePath(prd.defline(), path);
+		allocatePath(prd.getDeflineRef(), path);
 	}
 
-	vector<vector<Number>> payoffs(nThread + 1, vector<Number>(nPay));
+	vector<vector<Number>> computePayoffs(nThread + 1, vector<Number>(nPay));
 
 	vector<Tape> tapes(nThread);
 
@@ -786,7 +786,7 @@ mcParallelSimulAADMulti(
 	vector<unique_ptr<RNG>> rngs(nThread + 1);
 	for (auto& random : rngs)
 	{
-		random = rng.clone();
+		random = rng.getClonePtr();
 		random->init(models[0]->simDim());
 	}
 
@@ -827,19 +827,19 @@ mcParallelSimulAADMulti(
 				models[getThreadNumer]->generatePath(
 					gaussVecs[getThreadNumer],
 					paths[getThreadNumer]);
-				prd.payoffs(paths[getThreadNumer], payoffs[getThreadNumer]);
+				prd.computePayoffs(paths[getThreadNumer], computePayoffs[getThreadNumer]);
 
-				const size_t n = payoffs[getThreadNumer].size();
+				const size_t n = computePayoffs[getThreadNumer].size();
 				for (size_t j = 0; j < n; ++j)
 				{
-					payoffs[getThreadNumer][j].adjoint(j) = 1.0;
+					computePayoffs[getThreadNumer][j].adjoint(j) = 1.0;
 				}
 				Number::propagateAdjointsMulti(prev(Number::tape->end()), Number::tape->markIt());
 
 				convertCollection(
-					payoffs[getThreadNumer].begin(),
-					payoffs[getThreadNumer].end(),
-					results.payoffs[firstPath + i].begin());
+					computePayoffs[getThreadNumer].begin(),
+					computePayoffs[getThreadNumer].end(),
+					results.computePayoffs[firstPath + i].begin());
 			}
 
 			return true;

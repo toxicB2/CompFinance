@@ -42,7 +42,7 @@ class BlackScholes : public Model<T>
     //  Is today on product timeline?
     bool                myTodayOnTimeline;  
     //  The pruduct's defline byref
-    const vector<SampleStructure>*    myDefline;
+    const vector<SampleStructure>*    defline4Security;
 
     //  Pre-calculated on initialization
 
@@ -138,17 +138,17 @@ public:
     }
 
     //  Virtual copy constructor
-    unique_ptr<Model<T>> clone() const override
+    unique_ptr<Model<T>> getClonePtr() const override
     {
-        auto clone = make_unique<BlackScholes<T>>(*this);
-        clone->setParamPointers();
-        return clone;
+        auto getClonePtr = make_unique<BlackScholes<T>>(*this);
+        getClonePtr->setParamPointers();
+        return getClonePtr;
     }
 
     //  Initialize timeline
     void allocate(
         const vector<Time>&         productTimeline, 
-        const vector<SampleStructure>&    defline) 
+        const vector<SampleStructure>&    getDeflineRef) 
             override
     {
         //  Simulation timeline = today + product timeline
@@ -163,7 +163,7 @@ public:
         myTodayOnTimeline = (productTimeline[0] == systemTime);
 
         //  Take a reference on the product's defline
-        myDefline = &defline;
+        defline4Security = &getDeflineRef;
 
         //  Allocate the standard devs and drifts 
         //      over simulation timeline
@@ -178,25 +178,25 @@ public:
         myDiscounts.resize(n);
         for (size_t j = 0; j < n; ++j)
         {
-            myDiscounts[j].resize(defline[j].discountMats.size());
+            myDiscounts[j].resize(getDeflineRef[j].discountMats.size());
         }
 
         myForwardFactors.resize(n);
         for (size_t j = 0; j < n; ++j)
         {
-            myForwardFactors[j].resize(defline[j].forwardMats.size());
+            myForwardFactors[j].resize(getDeflineRef[j].forwardMats.size());
         }
 
         myLibors.resize(n);
         for (size_t j = 0; j < n; ++j)
         {
-            myLibors[j].resize(defline[j].liborDefs.size());
+            myLibors[j].resize(getDeflineRef[j].liborDefs.size());
         }
     }
 
     void init(
         const vector<Time>&         productTimeline, 
-        const vector<SampleStructure>&    defline) 
+        const vector<SampleStructure>&    getDeflineRef) 
             override
     {
         //  Pre-compute the standard devs and drifts over simulation timeline        
@@ -231,7 +231,7 @@ public:
 		for (size_t i = 0; i < m; ++i)
 		{
 			//  Numeraire
-			if (defline[i].needNumeraire)
+			if (getDeflineRef[i].needNumeraire)
 			{
 				if (mySpotMeasure)
 				{
@@ -250,27 +250,27 @@ public:
 			}
 
 			//  Discount factors
-			const size_t pDF = defline[i].discountMats.size();
+			const size_t pDF = getDeflineRef[i].discountMats.size();
 			for (size_t j = 0; j < pDF; ++j)
 			{
 				myDiscounts[i][j] =
-					exp(-myRate * (defline[i].discountMats[j] - productTimeline[i]));
+					exp(-myRate * (getDeflineRef[i].discountMats[j] - productTimeline[i]));
 			}
 
 			//  Forward factors
-			const size_t pFF = defline[i].forwardMats.size();
+			const size_t pFF = getDeflineRef[i].forwardMats.size();
 			for (size_t j = 0; j < pFF; ++j)
 			{
 				myForwardFactors[i][j] =
-					exp(mu * (defline[i].forwardMats[j] - productTimeline[i]));
+					exp(mu * (getDeflineRef[i].forwardMats[j] - productTimeline[i]));
 			}
 
 			//  Libors
-			const size_t pL = defline[i].liborDefs.size();
+			const size_t pL = getDeflineRef[i].liborDefs.size();
 			for (size_t j = 0; j < pL; ++j)
 			{
 				const double dt
-					= defline[i].liborDefs[j].end - defline[i].liborDefs[j].start;
+					= getDeflineRef[i].liborDefs[j].end - getDeflineRef[i].liborDefs[j].start;
 				myLibors[i][j] = (exp(myRate*dt) - 1.0) / dt;
 			}
 		}   //  loop on event dates
@@ -331,7 +331,7 @@ public:
         //  Is today on the product timeline?
         if (myTodayOnTimeline)
         {
-            fillScen(idx, spot, path[idx], (*myDefline)[idx]);
+            fillScen(idx, spot, path[idx], (*defline4Security)[idx]);
             ++idx;
         }
 
@@ -344,7 +344,7 @@ public:
             spot = spot * exp(myDrifts[i] 
                 + myStds[i] * gaussVec[i]);
             //  Store on the path
-            fillScen(idx, spot, path[idx], (*myDefline)[idx]);
+            fillScen(idx, spot, path[idx], (*defline4Security)[idx]);
             ++idx;
         }
     }

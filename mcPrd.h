@@ -14,9 +14,9 @@ class European : public Product<T>
     Time                optionSettlementDate;
 
     vector<Time>              timeline4Security;
-    vector<SampleStructure>   myDefline;
+    vector<SampleStructure>   defline4Security;
 
-    vector<string>      myLabels;
+    vector<string>      securityLabels;
 
 public:
     European(const double   strike, 
@@ -24,78 +24,46 @@ public:
              const Time     settlementDate) :
                             optionStrike(strike),
                             optionExerciseDate(exerciseDate),
-        optionSettlementDate(settlementDate),
-        myLabels(1)
+                            optionSettlementDate(settlementDate),
+                            securityLabels(1)
     {
-        //  Timeline = { exercise date }
+
         timeline4Security.push_back(exerciseDate);
+        defline4Security.resize(1); 
 
-        //  Defline
-        myDefline.resize(1);   //  only exercise date
-        //  Numeraire needed
-        myDefline[0].needNumeraire = true;
-        //  Forward to settlement needed at exercise
-        myDefline[0].forwardMats.push_back(settlementDate);
-        //  Discount to settlement needed at exercise
-        myDefline[0].discountMats.push_back(settlementDate);
+        defline4Security[0].needNumeraire = true;
 
-        //  Identify the product
+        defline4Security[0].forwardMats.push_back(settlementDate);
+        defline4Security[0].discountMats.push_back(settlementDate);
+
         ostringstream ost;
         ost.precision(2);
         ost << fixed;
         if (settlementDate == exerciseDate)
         {
-            ost << "call " << optionStrike << " " 
-                << exerciseDate;
+            ost << "call " << optionStrike << " " << exerciseDate;
         }
         else
         {
-            ost << "call " << optionStrike << " " 
-                << exerciseDate << " " << settlementDate;
+            ost << "call " << optionStrike << " " << exerciseDate << " " << settlementDate;
         }
-        myLabels[0] = ost.str();
+        securityLabels[0] = ost.str();
     }
 
     European(const double   strike,
-        const Time          exerciseDate) : 
-        European(strike, exerciseDate, exerciseDate)
+             const Time     exerciseDate) : 
+             European(strike, exerciseDate, exerciseDate)
     {}
 
-    //  Virtual copy constructor
-    unique_ptr<Product<T>> clone() const override
-    {
-        return make_unique<European<T>>(*this);
-    }
+    unique_ptr<Product<T>> getClonePtr() const override { return make_unique<European<T>>(*this);}
+    const vector<Time>& getTimelineRef() const override { return timeline4Security; }
+    const vector<SampleStructure>& getDeflineRef() const override { return defline4Security; }
+    const vector<string>& getPayoffLabelsRef() const override { return securityLabels; }
 
-    //  Timeline
-    const vector<Time>& timeline() const override
+    void computePayoffs( const Scenario<T>&          path,
+                         vector<T>&                  payoffs) const override
     {
-        return timeline4Security;
-    }
-
-    //  Defline
-    const vector<SampleStructure>& defline() const override
-    {
-        return myDefline;
-    }
-
-    //  Labels
-    const vector<string>& payoffLabels() const override
-    {
-        return myLabels;
-    }
-
-    //  Payoffs, maturity major
-    void payoffs(
-        //  path, one entry per time step
-        const Scenario<T>&          path,
-        //  pre-allocated space for resulting payoffs
-        vector<T>&                  payoffs)
-            const override
-    {
-        payoffs[0] = max(path[0].forwards[0] - optionStrike, 0.0)
-            * path[0].discounts[0]
-            / path[0].needNumeraire; 
+        payoffs[0] = max(path[0].forwards[0] - optionStrike, 0.0)* path[0].discounts[0] / path[0].needNumeraire; 
     }
 };
 
@@ -103,145 +71,87 @@ template <class T>
 class UOC : public Product<T>
 {
     double              optionStrike;
-    double              myBarrier;
-    Time                myMaturity;
-    
-    double              mySmooth;
-    
-    vector<Time>        timeline4Security;
-    vector<SampleStructure>   myDefline;
+    double              securityBarrier;
+    Time                maturityOfSecurity;
 
-    vector<string>      myLabels;
+    double              smoothingValue4Barrier;
+
+    vector<Time>        timeline4Security;
+    vector<SampleStructure>   defline4Security;
+
+    vector<string>      securityLabels;
 
 public:
-
-    //  Constructor: store data and build timeline
-    //  Timeline = system date to maturity, 
-    //  with steps every monitoring frequency
     UOC(const double    strike, 
         const double    barrier, 
         const Time      maturity, 
         const Time      monitorFreq,
         const double    smooth)
         : optionStrike(strike), 
-        myBarrier(barrier), 
-        myMaturity(maturity),
-        mySmooth(smooth),
-        myLabels(2)
+          securityBarrier(barrier), 
+          maturityOfSecurity(maturity),
+          smoothingValue4Barrier(smooth),
+          securityLabels(2)
     {
-        //  Timeline
-
-        //  Today
-        timeline4Security.push_back(systemTime);
+        timeline4Security.push_back(systemTime); //start from today and jump through monitoring frequency
         Time t = systemTime + monitorFreq;
             
-        //  Barrier monitoring
-        while (myMaturity - t > ONE_HOUR)
+        while (maturityOfSecurity - t > ONE_HOUR)
         {
             timeline4Security.push_back(t);
             t += monitorFreq;
         }
-
-        //  Maturity
-        timeline4Security.push_back(myMaturity);
-
-        //
-
-        //  Defline
+        timeline4Security.push_back(maturityOfSecurity);
 
         const size_t n = timeline4Security.size();
-        myDefline.resize(n);
+        defline4Security.resize(n);
         for (size_t i = 0; i < n; ++i)
         {
-            //  Numeraire needed only on last step
-            myDefline[i].needNumeraire = false;
-
-            //  spot(t) = forward (t, t) needed on every step
-            myDefline[i].forwardMats.push_back(timeline4Security[i]);
+            defline4Security[i].needNumeraire = false; //  Numeraire is needed only on last step
+            defline4Security[i].forwardMats.push_back(timeline4Security[i]); //  spot(t) = forward (t, t) 
         }
-        //  Numeraire needed only on last step
-        myDefline.back().needNumeraire = true;
+        defline4Security.back().needNumeraire = true;
 
-        //
-
-        //  Identify the product
         ostringstream ost;
         ost.precision(2);
         ost << fixed;
-        ost << "call " << myMaturity << " " << optionStrike ;
-        myLabels[1] = ost.str();
+        ost << "call " << maturityOfSecurity << " " << optionStrike ;
+        securityLabels[1] = ost.str();
 
-        ost << " up and out "
-            << myBarrier << " monitoring freq " << monitorFreq
-            << " smooth " << mySmooth;
-        myLabels[0] = ost.str();
+        ost << " up and out "<< securityBarrier << " monitoring freq " << monitorFreq << " smooth " << smoothingValue4Barrier;
+        securityLabels[0] = ost.str();
     }
 
-    //  Virtual copy constructor
-    unique_ptr<Product<T>> clone() const override
-    {
-        return make_unique<UOC<T>>(*this);
-    }
+    unique_ptr<Product<T>> getClonePtr() const override { return make_unique<UOC<T>>(*this); }
+    const vector<Time>& getTimelineRef() const override { return timeline4Security; }
+    const vector<SampleStructure>& getDeflineRef() const override { return defline4Security; }
+    const vector<string>& getPayoffLabelsRef() const override { return securityLabels; }
 
-    //  Timeline
-    const vector<Time>& timeline() const override
+    void computePayoffs( const Scenario<T>&          path,
+                         vector<T>&                  payoffs) const override
     {
-        return timeline4Security;
-    }
-
-    //  Defline
-    const vector<SampleStructure>& defline() const override
-    {
-        return myDefline;
-    }
-
-    //  Labels
-    const vector<string>& payoffLabels() const override
-    {
-        return myLabels;
-    }
-
-    //  Payoff
-    void payoffs(
-        //  path, one entry per time step 
-        const Scenario<T>&          path,
-        //  pre-allocated space for resulting payoffs
-        vector<T>&                  payoffs)
-            const override
-    {
-        //  We apply the smooth barrier technique to stabilize risks
         //  See Savine's presentation on Fuzzy Logic, Global Derivatives 2016
-
-        //  We apply a smoothing factor of x% of the spot both ways
-        //  untemplated
-        const double smooth = double(path[0].forwards[0] * mySmooth),
+        const double smooth = double(path[0].forwards[0] * smoothingValue4Barrier),
             twoSmooth = 2 * smooth,
-            barSmooth = myBarrier + smooth;
+            barSmooth = securityBarrier + smooth;
 
-        //  We start alive
-        T alive(1.0);
+        T alive(1.0); // Start alive
 
-        //  Go through path, update alive status
         for (const auto& sample: path)
         {
-            //  Breached
-            if (sample.forwards[0] > barSmooth)
+            if (sample.forwards[0] > barSmooth) //  Breached
             {
                 alive = T(0.0);
                 break;
-            }
-
-            //  Semi-breached: apply smoothing
-            if (sample.forwards[0] > myBarrier - smooth)
+            }         
+            if (sample.forwards[0] > securityBarrier - smooth) //  Semi-breached: apply smoothing
             {
                 alive *= (barSmooth - sample.forwards[0]) / twoSmooth;
             }
         }
 
-        //  Payoff
-        payoffs[1] = max(path.back().forwards[0] - optionStrike, 0.0) 
-                        / path.back().needNumeraire;
-        payoffs[0] = alive * payoffs[1];
+       payoffs[1] = max(path.back().forwards[0] - optionStrike, 0.0) / path.back().needNumeraire;
+       payoffs[0] = alive * payoffs[1];
     }
 };
 
@@ -252,9 +162,9 @@ class Europeans : public Product<T>
 	vector<Time>            myMaturities;
 	//  One vector of strikes per maturity
 	vector<vector<double>>  myStrikes;
-	vector<SampleStructure>       myDefline;
+	vector<SampleStructure>       defline4Security;
 
-	vector<string>          myLabels;
+	vector<string>          securityLabels;
 
 public:
 
@@ -271,11 +181,11 @@ public:
 		}
 
 		//  Defline = num and spot(t) = forward(t,t) on every step
-		myDefline.resize(n);
+		defline4Security.resize(n);
 		for (size_t i = 0; i < n; ++i)
 		{
-			myDefline[i].needNumeraire = true;
-			myDefline[i].forwardMats.push_back(myMaturities[i]);
+			defline4Security[i].needNumeraire = true;
+			defline4Security[i].forwardMats.push_back(myMaturities[i]);
 		}
 
 		//  Identify the payoffs
@@ -287,7 +197,7 @@ public:
 				ost.precision(2);
 				ost << fixed;
 				ost << "call " << option.first << " " << strike;
-				myLabels.push_back(ost.str());
+				securityLabels.push_back(ost.str());
 			}
 		}
 	}
@@ -304,40 +214,40 @@ public:
 	}
 
 	//  Virtual copy constructor
-	unique_ptr<Product<T>> clone() const override
+	unique_ptr<Product<T>> getClonePtr() const override
 	{
 		return make_unique<Europeans<T>>(*this);
 	}
 
 	//  Timeline
-	const vector<Time>& timeline() const override
+	const vector<Time>& getTimelineRef() const override
 	{
 		return myMaturities;
 	}
 
 	//  Defline
-	const vector<SampleStructure>& defline() const override
+	const vector<SampleStructure>& getDeflineRef() const override
 	{
-		return myDefline;
+		return defline4Security;
 	}
 
 	//  Labels
-	const vector<string>& payoffLabels() const override
+	const vector<string>& getPayoffLabelsRef() const override
 	{
-		return myLabels;
+		return securityLabels;
 	}
 
 	//  Payoffs, maturity major
-	void payoffs(
+	void computePayoffs(
 		//  path, one entry per time step 
 		const Scenario<T>&          path,
 		//  pre-allocated space for resulting payoffs
-		vector<T>&                  payoffs)
+		vector<T>&                  computePayoffs)
 		const override
 	{
 		const size_t numT = myMaturities.size();
 
-		auto payoffIt = payoffs.begin();
+		auto payoffIt = computePayoffs.begin();
 		for (size_t i = 0; i < numT; ++i)
 		{
 			transform(
@@ -361,14 +271,14 @@ public:
 template <class T>
 class ContingentBond : public Product<T>
 {
-    Time                myMaturity;
+    Time                maturityOfSecurity;
     double              myCpn;
-    double              mySmooth;
+    double              smoothingValue4Barrier;
 
     vector<Time>        timeline4Security;
-    vector<SampleStructure>   myDefline;
+    vector<SampleStructure>   defline4Security;
 
-    vector<string>      myLabels;
+    vector<string>      securityLabels;
 
     //  Pre-computed coverages
     vector<double>      myDt;
@@ -384,10 +294,10 @@ public:
         const Time      payFreq,
         const double    smooth)
         : 
-        myMaturity(maturity),
+        maturityOfSecurity(maturity),
         myCpn(cpn),
-        mySmooth(smooth),
-        myLabels(1)
+        smoothingValue4Barrier(smooth),
+        securityLabels(1)
     {
         //  Timeline
 
@@ -396,7 +306,7 @@ public:
         Time t = systemTime + payFreq;
 
         //  Payment schedule
-        while (myMaturity - t > ONE_DAY)
+        while (maturityOfSecurity - t > ONE_DAY)
         {
             myDt.push_back(t - timeline4Security.back());
             timeline4Security.push_back(t);
@@ -404,8 +314,8 @@ public:
         }
 
         //  Maturity
-        myDt.push_back(myMaturity - timeline4Security.back());
-        timeline4Security.push_back(myMaturity);
+        myDt.push_back(maturityOfSecurity - timeline4Security.back());
+        timeline4Security.push_back(maturityOfSecurity);
 
         //
 
@@ -418,62 +328,62 @@ public:
         //  (coverage is assumed act/365)
 
         const size_t n = timeline4Security.size();
-        myDefline.resize(n);
+        defline4Security.resize(n);
         for (size_t i = 0; i < n; ++i)
         {
             //  spot(Ti) = forward (Ti, Ti) needed on every step
-            myDefline[i].forwardMats.push_back(timeline4Security[i]);
+            defline4Security[i].forwardMats.push_back(timeline4Security[i]);
 
             //  libor(Ti, Ti+1) and discount (Ti, Ti+1) needed 
             //      on every step but last
             if (i < n - 1)
             {
-                myDefline[i].liborDefs.push_back(
+                defline4Security[i].liborDefs.push_back(
                     SampleStructure::RateDef(timeline4Security[i], timeline4Security[i + 1], "libor"));
             }
 
             //  Numeraire needed only on every step but first
-            myDefline[i].needNumeraire = i > 0;
+            defline4Security[i].needNumeraire = i > 0;
         }
 
         //  Identify the product
         ostringstream ost;
         ost.precision(2);
         ost << fixed;
-        ost << "contingent bond " << myMaturity << " " << myCpn;
-        myLabels[0] = ost.str();
+        ost << "contingent bond " << maturityOfSecurity << " " << myCpn;
+        securityLabels[0] = ost.str();
     }
 
     //  Virtual copy constructor
-    unique_ptr<Product<T>> clone() const override
+    unique_ptr<Product<T>> getClonePtr() const override
     {
         return make_unique<ContingentBond<T>>(*this);
     }
 
     //  Timeline
-    const vector<Time>& timeline() const override
+    const vector<Time>& getTimelineRef() const override
     {
         return timeline4Security;
     }
 
     //  Defline
-    const vector<SampleStructure>& defline() const override
+    const vector<SampleStructure>& getDeflineRef() const override
     {
-        return myDefline;
+        return defline4Security;
     }
 
     //  Labels
-    const vector<string>& payoffLabels() const override
+    const vector<string>& getPayoffLabelsRef() const override
     {
-        return myLabels;
+        return securityLabels;
     }
 
     //  Payoff
-    void payoffs(
+    void computePayoffs(
         //  path, one entry per time step 
         const Scenario<T>&          path,
         //  pre-allocated space for resulting payoffs
-        vector<T>&                  payoffs)
+        vector<T>&                  computePayoffs)
         const override
     {
         //  We apply the smooth digital technique to stabilize risks
@@ -481,12 +391,12 @@ public:
 
         //  We apply a smoothing factor of x% of the spot both ways
         //  untemplated
-        const double smooth = double(path[0].forwards[0] * mySmooth),
+        const double smooth = double(path[0].forwards[0] * smoothingValue4Barrier),
             twoSmooth = 2 * smooth;
 
         //  Period by period
         const size_t n = path.size() - 1;
-        payoffs[0] = 0;
+        computePayoffs[0] = 0;
         for (size_t i = 0; i < n; ++i)
         {
             const auto& start = path[i];
@@ -519,13 +429,13 @@ public:
 
             //  ~smoothing
 
-            payoffs[0] += 
+            computePayoffs[0] += 
                 digital             //  contingency
                 * ( start.libors[0] //  libor(Ti, Ti+1)
                 + myCpn)            //  + coupon
                 * myDt[i]           //  day count / 365
                 / end.needNumeraire;    //  paid at Ti+1
         }
-        payoffs[0] += 1.0 / path.back().needNumeraire;  //  redemption at maturity
+        computePayoffs[0] += 1.0 / path.back().needNumeraire;  //  redemption at maturity
     }
 };

@@ -46,7 +46,7 @@ class Sobol : public RNG
 public:
 
     //  Virtual copy constructor
-    unique_ptr<RNG> clone() const override
+    unique_ptr<RNG> getClonePtr() const override
     {
         return make_unique<Sobol>(*this);
     }

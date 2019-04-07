@@ -263,7 +263,7 @@ LPXLOPER12 xPayoffIds(
     //  Make sure we have a product
     if (!prd) return TempErr12(xlerrNA);
 
-    return from_strVector(prd->payoffLabels());
+    return from_strVector(prd->getPayoffLabelsRef());
 }
 
 extern "C" __declspec(dllexport)
@@ -553,7 +553,7 @@ LPXLOPER12 xBumprisk(
         auto results = bumpRisk(mid, pid, num);
         if (displayNow > 0.5)
         {
-            return from_labelledMatrix(results.params, results.payoffs, results.risks, "value", results.values);
+            return from_labelledMatrix(results.params, results.computePayoffs, results.risks, "value", results.values);
         }
         else
         {
@@ -603,7 +603,7 @@ LPXLOPER12 xAADriskMulti(
         auto results = AADriskMulti(mid, pid, num);
         if (displayNow > 0.5)
         {
-            return from_labelledMatrix(results.params, results.payoffs, results.risks, "value", results.values);
+            return from_labelledMatrix(results.params, results.computePayoffs, results.risks, "value", results.values);
         }
         else
         {
@@ -638,9 +638,9 @@ LPXLOPER12 xDisplayRisk(
     
     for (const auto& id : riskIds)
     {
-        auto it2 = find(results->payoffs.begin(), results->payoffs.end(), id);
-        if (it2 == results->payoffs.end()) return TempErr12(xlerrNA);
-        riskCols.push_back(distance(results->payoffs.begin(), it2));
+        auto it2 = find(results->computePayoffs.begin(), results->computePayoffs.end(), id);
+        if (it2 == results->computePayoffs.end()) return TempErr12(xlerrNA);
+        riskCols.push_back(distance(results->computePayoffs.begin(), it2));
     }
     if (riskCols.empty()) return TempErr12(xlerrNA);
 

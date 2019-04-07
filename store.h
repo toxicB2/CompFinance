@@ -202,6 +202,6 @@ const vector<string>* getPayoffLabels(const string& store)
 {
     auto it = productStore.find(store);
     if (it == productStore.end()) return nullptr;
-    else return & it->second.first.get()->payoffLabels();
+    else return & it->second.first.get()->getPayoffLabelsRef();
 
 }
