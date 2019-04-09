@@ -47,7 +47,7 @@ struct SampleStructure
 template <class T>
 struct ValuesForSampleStruct
 {
-    T           needNumeraire;
+    T           numeraire;
     vector<T>   forwards;
     vector<T>   discounts;
     vector<T>   libors;
@@ -62,7 +62,7 @@ struct ValuesForSampleStruct
 
     void initialize()
     {
-        needNumeraire = T(1.0);
+        numeraire = T(1.0);
 		fill(forwards.begin(), forwards.end(), T(100.0));
         fill(discounts.begin(), discounts.end(), T(1.0));
         fill(libors.begin(), libors.end(), T(0.0));

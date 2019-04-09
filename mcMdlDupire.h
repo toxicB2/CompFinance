@@ -32,7 +32,7 @@ class Dupire : public Model<T>
 
     //  Today's spot
     //  That would be today's linear market in a production system
-    T                       mySpot;
+    T                       spotPrice;
     //  Local volatility structure
     const vector<double>    mySpots;
     //  We keep log spots to interpolate in log space
@@ -65,8 +65,8 @@ class Dupire : public Model<T>
     //  so there is no need to do that during paths generation
 
     //  Exported parameters
-    vector<T*>              myParameters;
-    vector<string>          myParameterLabels;
+    vector<T*>              exportParametersPoiters;
+    vector<string>          exportParameterLabels;
 
 public:
 
@@ -78,21 +78,21 @@ public:
         const vector<Time>      times,
         const matrix<U>         vols,
         const Time maxDt =      0.25)
-        : mySpot(spot),
+        : spotPrice(spot),
         mySpots(spots),
         myLogSpots(mySpots.size()),
         myTimes(times),
         myVols(vols),
         myMaxDt(maxDt),
-        myParameters(myVols.rows() * myVols.cols() + 1),
-        myParameterLabels(myVols.rows() * myVols.cols() + 1)
+        exportParametersPoiters(myVols.rows() * myVols.cols() + 1),
+        exportParameterLabels(myVols.rows() * myVols.cols() + 1)
     {
         //  Compute log spots
 		transform(mySpots.begin(), mySpots.end(), myLogSpots.begin(), 
             [](const double s) {return log(s); });
 
         //  Set parameter labels once 
-        myParameterLabels[0] = "spot";
+        exportParameterLabels[0] = "spot";
 
         size_t p = 0;
         for (size_t i = 0; i < myVols.rows(); ++i)
@@ -103,7 +103,7 @@ public:
                 ost << setprecision(2) << fixed;
                 ost << "lvol " << mySpots[i] << " " << myTimes[j];
  
-                myParameterLabels[++p] = ost.str();
+                exportParameterLabels[++p] = ost.str();
             }
         }
 
@@ -115,8 +115,8 @@ private:
     //  Must reset on copy
     void setParamPointers()
     {
-        myParameters[0] = &mySpot;
-        transform(myVols.begin(), myVols.end(), next(myParameters.begin()), 
+        exportParametersPoiters[0] = &spotPrice;
+        transform(myVols.begin(), myVols.end(), next(exportParametersPoiters.begin()), 
             [](auto& vol) {return &vol; });
     }
 
@@ -125,7 +125,7 @@ public:
     //  Read access to parameters
     T spot() const
     {
-        return mySpot;
+        return spotPrice;
     }
 
     const vector<double>& spots() const
@@ -146,11 +146,11 @@ public:
     //  Access to all the model parameters
     const vector<T*>& getParameters() override
     {
-        return myParameters;
+        return exportParametersPoiters;
     }
     const vector<string>& getParameterLabels() const override
     {
-        return myParameterLabels;
+        return exportParameterLabels;
     }
 
     //  Virtual copy constructor
@@ -242,7 +242,7 @@ public:
     {
         //  The starting spot
         //  We know that today is on the timeline
-        T logspot = log(mySpot);
+        T logspot = log(spotPrice);
         Time current = systemTime;
         //  Next index to fill on the product timeline
         size_t idx = 0;
