@@ -217,7 +217,7 @@ public:
     }
 
     //  MC Dimension
-    size_t simDim() const override
+    size_t getSimulationDimension() const override
     {
         return timeline4Security.size() - 1;
     }

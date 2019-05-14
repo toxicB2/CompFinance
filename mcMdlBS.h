@@ -129,12 +129,11 @@ public:
             }
             else
             {
-                //random walk mean
+                //geometric BM mean
                 bsDrifts[i] = (mu - 0.5*flatVolatility*flatVolatility)*dt;
             }
         }
 
-        // Numeraires, discount and forward factors on event dates
         const size_t m = productTimeline.size();
 
 		for (size_t i = 0; i < m; ++i) //  loop on event dates
@@ -181,74 +180,45 @@ public:
 		}   
 	}
 
-    //  MC Dimension
-    size_t simDim() const override
-    {
-        return timeline4Security.size() - 1;
-    }
+	size_t getSimulationDimension() const override { return timeline4Security.size() - 1; }
 
 private:
-
-    //  Helper function, fills a Sample given the spot
-    inline void fillScen(
-        const size_t        idx,    //  index on product timeline
-        const T&            spot,   //  spot
-        ValuesForSampleStruct<T>&          scen,   //  Sample to fill
-        const SampleStructure&    def)    //  and its definition
-            const
+    inline void fillScen( const size_t                idx,    
+                          const T&                    spot,  
+                          ValuesForSampleStruct<T>&   scen,   
+                          const SampleStructure&      def) const
     {
         if (def.needNumeraire)
         {
-        scen.numeraire = bsNumeraires[idx];
+			scen.numeraire = bsNumeraires[idx];
             if (isSpotMeasure) scen.numeraire *= spot;
         }
         
-        transform(bsForwardFactors[idx].begin(), bsForwardFactors[idx].end(), 
-            scen.forwards.begin(), 
-            [&spot](const T& ff)
-            {
-                return spot * ff;
-            }
-        );
+        transform(bsForwardFactors[idx].begin(), bsForwardFactors[idx].end(), scen.forwards.begin(), 
+			[&spot](const T& ff) { return spot * ff;}
+                  );
 
-        copy(bsDiscounts[idx].begin(), bsDiscounts[idx].end(), 
-            scen.discounts.begin());
-
-        copy(bsLibors[idx].begin(), bsLibors[idx].end(),
-            scen.libors.begin());
+        copy(bsDiscounts[idx].begin(), bsDiscounts[idx].end(), scen.discounts.begin());
+        copy(bsLibors[idx].begin(), bsLibors[idx].end(), scen.libors.begin());
     }
 
 public:
 
-    //  Generate one path, consume Gaussian vector
-    //  path must be pre-allocated 
-    //  with the same size as the product timeline
-    void generatePath(
-        const vector<double>&   gaussVec, 
-        Scenario<T>&            path) 
-            const override
+    void generatePath( const vector<double>&   gaussVec, 
+                       Scenario<T>&            path) const override
     {
-        //  The starting spot
-        //  We know that today is on the timeline
-        T spot = spotPrice;
-        //  Next index to fill on the product timeline
+        T spot = spotPrice; // on tape
         size_t idx = 0;
-        //  Is today on the product timeline?
         if (isTodayOnTimeline)
         {
             fillScen(idx, spot, path[idx], (*defline4Security)[idx]);
             ++idx;
         }
 
-        //  Iterate through timeline, apply sampling scheme
         const size_t n = timeline4Security.size() - 1;
         for (size_t i = 0; i < n; ++i)
         {
-            //  Apply known conditional distributions 
-                //  Black-Scholes
-            spot = spot * exp(bsDrifts[i] 
-                + stDeviations[i] * gaussVec[i]);
-            //  Store on the path
+            spot = spot * exp(bsDrifts[i] + stDeviations[i] * gaussVec[i]);
             fillScen(idx, spot, path[idx], (*defline4Security)[idx]);
             ++idx;
         }

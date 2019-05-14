@@ -1,19 +1,4 @@
 
-/*
-Written by Antoine Savine in 2018
-
-This code is the strict IP of Antoine Savine
-
-License to use and alter this code for personal and commercial applications
-is freely granted to any person or company who purchased a copy of the book
-
-Modern Computational Finance: AAD and Parallel Simulations
-Antoine Savine
-Wiley, 2018
-
-As long as this comment is preserved at the top of the file
-*/
-
 //  Excel export wrappers to functions in main.h
 
 #pragma warning(disable:4996)
@@ -302,27 +287,20 @@ LPXLOPER12 xValue(
     FreeAllTempMemory();
 
     const string pid = getString(productid);
-    //  Make sure we have an id
     if (pid.empty()) return TempErr12(xlerrNA);
 
     const auto* prd = getProduct<double>(pid);
-    //  Make sure we have a product
     if (!prd) return TempErr12(xlerrNA);
 
     const string mid = getString(modelid);
-    //  Make sure we have an id
     if (mid.empty()) return TempErr12(xlerrNA);
 
     Model<double>* mdl = const_cast<Model<double>*>(getModel<double>(mid));
-    //  Make sure we have a model
     if (!mdl) return TempErr12(xlerrNA);
 
-    //  Numerical params
     const auto num = xl2num(useSobol, seed1, seed2, numPath, parallel);
-    //  Make sure we have a numPath
     if (!num.numPath) return TempErr12(xlerrNA);
 
-    //  Call and return;
     try 
     {
         auto results = value(mid, pid, num);

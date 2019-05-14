@@ -1,19 +1,4 @@
 
-/*
-Written by Antoine Savine in 2018
-
-This code is the strict IP of Antoine Savine
-
-License to use and alter this code for personal and commercial applications
-is freely granted to any person or company who purchased a copy of the book
-
-Modern Computational Finance: AAD and Parallel Simulations
-Antoine Savine
-Wiley, 2018
-
-As long as this comment is preserved at the top of the file
-*/
-
 //  Entry points to the library
 
 #pragma once
@@ -38,24 +23,20 @@ struct NumericalParam
     int               seed2 = 1234;
 };
 
-//  Price product in model
-inline auto value(
-    const Model<double>&    model,
-    const Product<double>&  product,
-    //  numerical parameters
-    const NumericalParam&   num)
+inline auto value(const Model<double>&    model,
+                  const Product<double>&  product,
+                  const NumericalParam&   num)
 {
-    //  Random Number Generator
     unique_ptr<RNG> rng;
-    if (num.useSobol) rng = make_unique<Sobol>();
-    else rng = make_unique<mrg32k3a>(num.seed1, num.seed2);
+    if (num.useSobol) 
+		rng = make_unique<Sobol>();
+    else 
+		rng = make_unique<mrg32k3a>(num.seed1, num.seed2);
 
-    //  Simulate
-    const auto resultMat = num.parallel
-        ? mcParallelSimul(product, model, *rng, num.numPath)
-        : mcSimul(product, model, *rng, num.numPath);
+    const auto resultMat = num.parallel?
+        mcParallelSimul(product, model, *rng, num.numPath):
+        mcSimul(product, model, *rng, num.numPath);
 
-    //  We return 2 vectors : the payoff identifiers and their values
     struct
     {
         vector<string> identifiers;
@@ -75,14 +56,10 @@ inline auto value(
     return results;
 }
 
-//  Overload that picks product and model by name in the store
-inline auto value(
-    const string&           modelId,
-    const string&           productId,
-    //  numerical parameters
-    const NumericalParam&   num)
+inline auto value( const string&           modelId,
+	               const string&           productId,
+                   const NumericalParam&   num)
 {
-    //  Get model and product
     const Model<double>* model = getModel<double>(modelId);
     const Product<double>* product = getProduct<double>(productId);
 
@@ -94,14 +71,11 @@ inline auto value(
     return value(*model, *product, num);
 }
 
-//  AAD risk, one payoff
-inline auto AADriskOne(
-    const string&           modelId,
-    const string&           productId,
-    const NumericalParam&   num,
-    const string&           riskPayoff = "")
+inline auto AADriskOne( const string&           modelId,
+                        const string&           productId,
+                        const NumericalParam&   num,
+                        const string&           riskPayoff = "")
 {
-    //  Get model and product
     const Model<Number>* model = getModel<Number>(modelId);
     const Product<Number>* product = getProduct<Number>(productId);
 
@@ -110,12 +84,12 @@ inline auto AADriskOne(
         throw runtime_error("AADrisk() : Could not retrieve model and product");
     }
 
-    //  Random Number Generator
     unique_ptr<RNG> rng;
-    if (num.useSobol) rng = make_unique<Sobol>();
-    else rng = make_unique<mrg32k3a>(num.seed1, num.seed2);
+    if (num.useSobol) 
+		rng = make_unique<Sobol>();
+    else 
+		rng = make_unique<mrg32k3a>(num.seed1, num.seed2);
 
-    //  Find the payoff for risk
     size_t riskPayoffIdx = 0;
     if (!riskPayoff.empty())
     {
@@ -128,18 +102,10 @@ inline auto AADriskOne(
         riskPayoffIdx = distance(allPayoffs.begin(), it);
     }
 
-    //  Simulate
-    const auto simulResults = num.parallel
-        ? mcParallelSimulAAD(*product, *model, *rng, num.numPath,
-            [riskPayoffIdx](const vector<Number>& v) {return v[riskPayoffIdx]; })
-        : mcSimulAAD(*product, *model, *rng, num.numPath,
-            [riskPayoffIdx](const vector<Number>& v) {return v[riskPayoffIdx]; });
+    const auto simulResults = num.parallel?
+        mcParallelSimulAAD(*product, *model, *rng, num.numPath, [riskPayoffIdx](const vector<Number>& v) {return v[riskPayoffIdx]; }):
+        mcSimulAAD(*product, *model, *rng, num.numPath,[riskPayoffIdx](const vector<Number>& v) {return v[riskPayoffIdx]; });
 
-    //  We return: a number and 2 vectors : 
-    //  -   The payoff identifiers and their values
-    //  -   The value of the aggreagte payoff
-    //  -   The parameter idenitifiers 
-    //  -   The sensititivities of the aggregate to parameters
     struct
     {
         vector<string>  payoffIds;

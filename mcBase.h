@@ -112,7 +112,7 @@ public:
     virtual void init( const vector<Time>&         prdTimeline, 
                        const vector<SampleStructure>&    prdDefline) = 0;
 
-    virtual size_t simDim() const = 0;
+    virtual size_t getSimulationDimension() const = 0;
 
     virtual void generatePath(const vector<double>& gaussVec, 
                               Scenario<T>&              path) const = 0;
@@ -156,63 +156,49 @@ public:
 };
 
 //  Template algorithms
-//  ===================
-
-//  Serial valuation, chapter 6
-
-//	MC simulator: free function that conducts simulations 
-//      and returns a matrix (as vector of vectors) of payoffs 
-//          (0..nPath-1 , 0..nPay-1) 
-inline vector<vector<double>> mcSimul(
-    const Product<double>&      prd,
-    const Model<double>&        mdl,
-    const RNG&                  rng,			            
-    const size_t                nPath)                      
+//  ------------------------------------------------------------------------------------------------------
+//	MC simulator: Serial
+inline vector<vector<double>> mcSimul( const Product<double>&      prd,
+                                       const Model<double>&        mdl,
+                                       const RNG&                  rng,			            
+                                       const size_t                nPath)                      
 {
-    //  Work with copies of the model and RNG
-    //      which are modified when we set up the simulation
-    //  Copies are OK at high level
     auto cMdl = mdl.getClonePtr();
     auto cRng = rng.getClonePtr();
 
-    //	Allocate results
     const size_t nPay = prd.getPayoffLabelsRef().size();
     vector<vector<double>> results(nPath, vector<double>(nPay));
-    //  Init the simulation timeline
+
     cMdl->allocate(prd.getTimelineRef(), prd.getDeflineRef());
     cMdl->init(prd.getTimelineRef(), prd.getDeflineRef());              
-    //  Init the RNG
-    cRng->init(cMdl->simDim());                        
-    //  Allocate Gaussian vector
-    vector<double> gaussVec(cMdl->simDim());           
-    //  Allocate path
+
+    cRng->init(cMdl->getSimulationDimension());      
+
+    vector<double> gaussVec(cMdl->getSimulationDimension());     
+
     Scenario<double> path;
     allocatePath(prd.getDeflineRef(), path);
     initializePath(path);
 
-    //	Iterate through paths	
     for (size_t i = 0; i<nPath; i++)
     {
-        //  Next Gaussian vector, dimension D
         cRng->nextG(gaussVec);                        
-        //  Generate path, consume Gaussian vector
         cMdl->generatePath(gaussVec, path);     
-        //	Compute result
         prd.computePayoffs(path, results[i]);
     }
 
     return results;	//	C++11: move
 }
 
-//  Parallel valuation, chapter 7
+//  Template algorithms
+//  ------------------------------------------------------------------------------------------------------
+//	MC simulator: Parallel
 
 #define BATCHSIZE 64
-//	Parallel equivalent of mcSimul()
-inline vector<vector<double>> mcParallelSimul(
-    const Product<double>&      prd,
-    const Model<double>&        mdl,
-    const RNG&                  rng,
-    const size_t                nPath)
+inline vector<vector<double>> mcParallelSimul( const Product<double>&      prd,
+                                               const Model<double>&        mdl,
+                                               const RNG&                  rng,
+                                               const size_t                nPath)
 {
     auto cMdl = mdl.getClonePtr();
 
@@ -222,34 +208,29 @@ inline vector<vector<double>> mcParallelSimul(
     cMdl->allocate(prd.getTimelineRef(), prd.getDeflineRef());
     cMdl->init(prd.getTimelineRef(), prd.getDeflineRef());
 
-    //  Allocate space for Gaussian vectors and paths, 
-    //      one for each thread
     ThreadPool *pool = ThreadPool::getInstance();
-    const size_t nThread = pool->getTotalNumerOfThreads();
+    const size_t nThread = pool->getTotalNumerOfThreads(); // pool has to be started (for excel implementation -> xlExport)
+
     vector<vector<double>> gaussVecs(nThread+1);    //  +1 for main
     vector<Scenario<double>> paths(nThread+1);
-    for (auto& vec : gaussVecs) vec.resize(cMdl->simDim());
+
+    for (auto& vec : gaussVecs) vec.resize(cMdl->getSimulationDimension());
     for (auto& path : paths)
     {
         allocatePath(prd.getDeflineRef(), path);
         initializePath(path);
     }
     
-    //  One RNG per thread
-    vector<unique_ptr<RNG>> rngs(nThread + 1);
+    vector<unique_ptr<RNG>> rngs(nThread + 1); // One RNG per thread
+
     for (auto& random : rngs)
     {
         random = rng.getClonePtr();
-        random->init(cMdl->simDim());
+        random->init(cMdl->getSimulationDimension());
     }
 
-    //  Reserve memory for futures
     vector<TaskHandle> futures;
     futures.reserve(nPath / BATCHSIZE + 1); 
-
-    //  Start
-    //  Same as mcSimul() except we send tasks to the pool 
-    //  instead of executing them
 
     size_t firstPath = 0;
     size_t pathsLeft = nPath;
@@ -259,28 +240,20 @@ inline vector<vector<double>> mcParallelSimul(
 
         futures.push_back( pool->spawnTask ( [&, firstPath, pathsInTask]()
         {
-            //  Inside the parallel task, 
-            //      pick the right pre-allocated vectors
             const size_t getThreadNumer = pool->getThreadNumer();
             vector<double>& gaussVec = gaussVecs[getThreadNumer];
             Scenario<double>& path = paths[getThreadNumer];
 
-            //  Get a RNG and position it correctly
             auto& random = rngs[getThreadNumer];
-            random->skipTo(firstPath);
+            random->skipTo(firstPath);  //  Get a RNG and position it correctly
 
-            //  And conduct the simulations, exactly same as sequential
             for (size_t i = 0; i < pathsInTask; i++)
             {
-                //  Next Gaussian vector, dimension D
                 random->nextG(gaussVec);
-                //  Path
                 cMdl->generatePath(gaussVec, path);       
-                //  Payoff
                 prd.computePayoffs(path, results[firstPath + i]);
             }
 
-            //  Remember tasks must return bool
             return true;
         }));
 
@@ -291,7 +264,7 @@ inline vector<vector<double>> mcParallelSimul(
     //  Wait and help
     for (auto& future : futures) pool->activeWait(future);
 
-    return results;	//	C++11: move
+    return results;	
 }
 
 //  AAD instrumentation of mcSimul(), chapter 12
@@ -364,12 +337,12 @@ mcSimulAAD(
     //
 
     //  Init the RNG
-    cRng->init(cMdl->simDim());                         
+    cRng->init(cMdl->getSimulationDimension());                         
                                                             
     //  Allocate workspace
     vector<Number> nPayoffs(nPay);
     //  Gaussian vector
-    vector<double> gaussVec(cMdl->simDim());            
+    vector<double> gaussVec(cMdl->getSimulationDimension());            
 
     //  Results
     AADSimulResults results(nPath, nPay, nParam);
@@ -523,12 +496,12 @@ mcParallelSimulAAD(
     for (auto& random : rngs)
     {
         random = rng.getClonePtr();
-        random->init(models[0]->simDim());
+        random->init(models[0]->getSimulationDimension());
     }
 
     //  One Gaussian vector per thread
     vector<vector<double>> gaussVecs
-        (nThread + 1, vector<double>(models[0]->simDim()));
+        (nThread + 1, vector<double>(models[0]->getSimulationDimension()));
 
     //  Reserve memory for futures
     vector<TaskHandle> futures;
@@ -693,10 +666,10 @@ mcSimulAADMulti(
 	initializePath(path);
 	tape.mark();
 
-	cRng->init(cMdl->simDim());
+	cRng->init(cMdl->getSimulationDimension());
 
 	vector<Number> nPayoffs(nPay);
-	vector<double> gaussVec(cMdl->simDim());
+	vector<double> gaussVec(cMdl->getSimulationDimension());
 
     //  Allocate multi-dimensional results
     //      including a matrix(0..nParam - 1, 0..nPay - 1) of risk sensitivities
@@ -787,11 +760,11 @@ mcParallelSimulAADMulti(
 	for (auto& random : rngs)
 	{
 		random = rng.getClonePtr();
-		random->init(models[0]->simDim());
+		random->init(models[0]->getSimulationDimension());
 	}
 
 	vector<vector<double>> gaussVecs
-	(nThread + 1, vector<double>(models[0]->simDim()));
+	(nThread + 1, vector<double>(models[0]->getSimulationDimension()));
 
 	AADMultiSimulResults results(nPath, nPay, nParam);
 
